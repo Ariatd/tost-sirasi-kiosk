@@ -1,0 +1,18 @@
+[Unit]
+Description=Tost Sirasi kiosk penceresi (pywebview / WebKitGTK)
+After=graphical-session.target tost-kiosk.service
+PartOf=graphical-session.target
+Requisite=graphical-session.target
+
+[Service]
+Type=simple
+# backend hazir olana kadar bekle
+ExecStartPre=/bin/sh -c 'for i in $(seq 1 120); do curl -sf -o /dev/null http://127.0.0.1:8080/api/health && exit 0; sleep 1; done; exit 0'
+ExecStart=%h/tost-kiosk/start-kiosk-app.sh
+# temiz cikista (Uygulamayi kapat / Ctrl+Shift+Q) kapali kalsin;
+# yalnizca cokme durumunda yeniden baslasin.
+Restart=on-failure
+RestartSec=3
+
+[Install]
+WantedBy=graphical-session.target

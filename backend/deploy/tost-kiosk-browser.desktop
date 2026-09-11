@@ -1,0 +1,9 @@
+[Desktop Entry]
+Type=Application
+Name=Tost Kiosk (tam ekran)
+Comment=Tost Sirasi kiosk tarayicisini tam ekran baslatir
+Exec=/home/botek/tost-kiosk/start-kiosk-browser.sh
+X-GNOME-Autostart-enabled=true
+X-GNOME-Autostart-Delay=3
+NoDisplay=false
+Terminal=false

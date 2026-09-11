@@ -1,0 +1,48 @@
+{
+  "name": "tost-kiosk-react",
+  "private": true,
+  "version": "1.0.0",
+  "description": "Tost Sırası — React + Electron kiosk istemcisi (aynı gerçek backend'e bağlanır)",
+  "main": "electron/main.cjs",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "electron:pack": "electron-builder --linux AppImage --x64",
+    "electron:pack:dir": "electron-builder --linux dir --x64"
+  },
+  "dependencies": {
+    "react": "18.3.1",
+    "react-dom": "18.3.1"
+  },
+  "devDependencies": {
+    "@vitejs/plugin-react": "4.3.1",
+    "vite": "5.4.8",
+    "vitest": "2.1.9",
+    "electron": "31.3.1",
+    "electron-builder": "24.13.3"
+  },
+  "build": {
+    "appId": "com.tostkiosk.app",
+    "productName": "Tost Sirasi",
+    "directories": {
+      "output": "release",
+      "buildResources": "build-resources"
+    },
+    "files": [
+      "dist/**/*",
+      "electron/**/*"
+    ],
+    "linux": {
+      "target": [
+        { "target": "AppImage", "arch": ["x64"] },
+        { "target": "dir", "arch": ["x64"] }
+      ],
+      "category": "Utility",
+      "icon": "build-resources/icon.png"
+    }
+  }
+}

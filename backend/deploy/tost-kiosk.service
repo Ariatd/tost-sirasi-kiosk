@@ -1,0 +1,23 @@
+[Unit]
+Description=Tost Sirasi Kiosk backend (Flask'siz, stdlib HTTP + seri okuma)
+After=multi-user.target
+
+[Service]
+Type=simple
+User=botek
+SupplementaryGroups=dialout
+WorkingDirectory=/home/botek/tost-kiosk
+Environment=KIOSK_HOST=0.0.0.0
+Environment=KIOSK_PORT=8080
+Environment=KIOSK_DB=/home/botek/tost-kiosk/kiosk.db
+Environment=KIOSK_SERIAL=/dev/serial/by-id/usb-1a86_USB_Serial-if00-port0
+ExecStart=/usr/bin/python3 -u /home/botek/tost-kiosk/server.py
+Restart=always
+RestartSec=3
+NoNewPrivileges=true
+ProtectSystem=strict
+ReadWritePaths=/home/botek/tost-kiosk
+PrivateTmp=true
+
+[Install]
+WantedBy=multi-user.target

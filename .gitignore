@@ -1,0 +1,27 @@
+# --- ortak ---
+__pycache__/
+*.pyc
+.DS_Store
+
+# --- sırlar / makineye özgü ---
+admin_token
+*.db
+*.db-shm
+*.db-wal
+*.log
+
+# --- frontend-react (Node/Electron) ---
+frontend-react/node_modules/
+frontend-react/dist/
+frontend-react/release/
+frontend-react/*.log
+frontend-react/npm-debug.log*
+
+# --- backend: pywebview'in pip'siz vendörlenmiş bağımlılıkları ---
+# (büyük, üçüncü parti, kaynak değil — gerekirse README'deki adımlarla
+# yeniden indirilir)
+backend/libs/
+
+# --- editör ---
+.vscode/
+.idea/

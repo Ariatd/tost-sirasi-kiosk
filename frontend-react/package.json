@@ -1,8 +1,10 @@
 {
-  "name": "tost-kiosk-react",
+  "name": "tost-kiosk-client",
   "private": true,
-  "version": "1.0.0",
-  "description": "Tost Sırası — React + Electron kiosk istemcisi (aynı gerçek backend'e bağlanır)",
+  "version": "2.0.2",
+  "description": "Tost Sırası — Client Mode: panel PC'de çalışan Electron istemcisi, kart okuyucuyu (serialport) yerelde okur, uzak backend'e (TOST_BACKEND_URL) bildirir",
+  "author": "Aria Tabiezad <ariatd99@gmail.com>",
+  "homepage": "https://github.com/Ariatd/tost-sirasi-kiosk",
   "main": "electron/main.cjs",
   "type": "module",
   "scripts": {
@@ -12,11 +14,14 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "electron:pack": "electron-builder --linux AppImage --x64",
+    "electron:pack:deb": "electron-builder --linux deb --x64",
+    "electron:pack:all": "electron-builder --linux AppImage deb --x64",
     "electron:pack:dir": "electron-builder --linux dir --x64"
   },
   "dependencies": {
     "react": "18.3.1",
-    "react-dom": "18.3.1"
+    "react-dom": "18.3.1",
+    "serialport": "12.0.0"
   },
   "devDependencies": {
     "@vitejs/plugin-react": "4.3.1",
@@ -26,23 +31,37 @@
     "electron-builder": "24.13.3"
   },
   "build": {
-    "appId": "com.tostkiosk.app",
-    "productName": "Tost Sirasi",
+    "appId": "com.tostkiosk.client",
+    "productName": "TostKioskClient",
     "directories": {
       "output": "release",
       "buildResources": "build-resources"
     },
     "files": [
       "dist/**/*",
-      "electron/**/*"
+      "electron/**/*",
+      "package.json",
+      "node_modules/**/*"
+    ],
+    "asarUnpack": [
+      "node_modules/@serialport/**/*",
+      "node_modules/serialport/**/*",
+      "**/*.node"
     ],
     "linux": {
       "target": [
         { "target": "AppImage", "arch": ["x64"] },
+        { "target": "deb", "arch": ["x64"] },
         { "target": "dir", "arch": ["x64"] }
       ],
       "category": "Utility",
-      "icon": "build-resources/icon.png"
+      "icon": "build-resources/icons",
+      "executableName": "tost-kiosk-client",
+      "synopsis": "Tost sırası kiosk istemcisi (kart okuyucu + uzak backend)",
+      "desktop": {
+        "Name": "Tost Sırası - Client",
+        "Comment": "Tost sırası kiosk istemcisi (kart okuyucu + uzak backend)"
+      }
     }
   }
 }

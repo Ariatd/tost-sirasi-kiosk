@@ -1,20 +1,28 @@
 #!/bin/bash
-# Tost Sırası — React/Electron sürümü, ELLE başlatma script'i.
+# Tost Sırası — Client Mode başlatma script'i (panel PC'de çalışır).
 #
-# Bu, panelin mevcut çalışan pywebview kiosk'una (tost-kiosk-app.service)
-# DOKUNMAZ. İkisi aynı anda fiziksel ekranı paylaşamaz; bu sürümü test
-# etmeden önce mevcut olanı geçici durdur:
+# Bu artık kendi backend'i olan bir kiosk DEĞİL — panel PC'nin kendisi kart
+# okuyucuyu (CH340) burada okur ve uzak backend'e (TOST_BACKEND_URL) bildirir.
+# Backend artık PANELDE DEĞİL, geliştiricinin kendi bilgisayarında çalışır.
 #
-#   systemctl --user stop tost-kiosk-app.service
-#   ~/tost-kiosk-electron/run.sh
-#   (test bitince: Ctrl+C veya "Uygulamayı kapat" ile çık, sonra)
-#   systemctl --user start tost-kiosk-app.service
-#
-# Aynı gerçek backend'e (http://10.42.0.74:8080, ~/tost-kiosk/server.py)
-# bağlanır — backend değişmedi, bu sadece farklı bir görüntüleme katmanı.
+# TOST_BACKEND_URL'i BURADA hardcode ETMEYİN — yanındaki client-mode.env
+# dosyasından okunur (deploy sırasında tek satır değiştirilir).
 set -u
 cd "$(dirname "$0")"
-chmod +x "./Tost Sirasi-1.0.0.AppImage" 2>/dev/null
+
+if [ -f "./client-mode.env" ]; then
+  # shellcheck disable=SC1091
+  source "./client-mode.env"
+fi
+
+if [ -z "${TOST_BACKEND_URL:-}" ]; then
+  echo "HATA: TOST_BACKEND_URL ayarlanmamış (client-mode.env dosyasını kontrol edin)." >&2
+  echo "Uygulama yine de açılacak ama 'Backend adresi ayarlanmamış' uyarı ekranını gösterecek." >&2
+fi
+export TOST_BACKEND_URL
+
+APPIMAGE="./TostKioskClient-2.0.2.AppImage"
+chmod +x "$APPIMAGE" 2>/dev/null
 
 # AppImage varsayılan olarak FUSE ile kendini bağlar; panelde libfuse2 kurulu
 # değilse (yaygın, minimal Ubuntu kurulumlarında sık) bu başarısız olur.
@@ -23,7 +31,6 @@ chmod +x "./Tost Sirasi-1.0.0.AppImage" 2>/dev/null
 #
 # --ozone-platform=wayland: panel Wayland-yerel çalışıyor (GNOME/Mutter).
 # Electron'un pencere katmanı (Ozone) bu bayrak olmadan $DISPLAY (X11)
-# arıyor ve "Missing X server" hatasıyla sessizce çöküyor — pywebview
-# (GTK-native) bu sorunu yaşamıyordu, Electron/Chromium ayrı bir katman.
-exec "./Tost Sirasi-1.0.0.AppImage" --appimage-extract-and-run --no-sandbox \
+# arıyor ve "Missing X server" hatasıyla sessizce çöküyor.
+exec "$APPIMAGE" --appimage-extract-and-run --no-sandbox \
   --ozone-platform=wayland --enable-features=UseOzonePlatform

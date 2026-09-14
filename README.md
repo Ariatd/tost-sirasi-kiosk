@@ -90,18 +90,36 @@ gönderim hâlâ elle (rsync/scp) yapılır; bkz. [Deploy](#deploy).
 
 ## Kurulum / çalıştırma
 
-### Backend (panelde, zaten kurulu ve çalışıyor)
+### Backend (artık PANELDE DEĞİL — geliştiricinin kendi bilgisayarında)
+
+Mimari değişti: panel PC'de artık backend/DB yok, yalnızca "Client Mode"
+(kart okuyucu + uzak backend istemcisi) çalışıyor. Backend, SQLite ve
+kart-okuma iş mantığı geliştiricinin kendi makinesinde, `0.0.0.0:8080`
+üzerinde dinliyor ki panel LAN'dan erişebilsin.
 
 ```bash
-# panelde:
-python3 ~/tost-kiosk/server.py          # elle test
-systemctl --user status tost-kiosk.service   # gerçek durum
+# kendi bilgisayarınızda:
+python3 backend/server.py                       # elle test
+systemctl --user status tost-kiosk-backend.service   # kalıcı servis (kurulum aşağıda)
 ```
 
-Gereksinim: Python 3.12 + `pyserial` (`sudo apt install python3-serial` ya da
-`pip install pyserial` gerekirse). Ortam değişkenleri: `KIOSK_HOST`,
-`KIOSK_PORT`, `KIOSK_DB`, `KIOSK_SERIAL`, `KIOSK_ADMIN_TOKEN` (bkz. `server.py`
-başı).
+Kalıcı servis kurmak için:
+
+```bash
+mkdir -p ~/.config/systemd/user
+cp backend/deploy/tost-kiosk-backend.service ~/.config/systemd/user/
+systemctl --user daemon-reload
+systemctl --user enable --now tost-kiosk-backend.service
+```
+
+Gereksinim: yalnızca Python 3.12 stdlib (pyserial bile gerekmiyor artık —
+seri port okuma panelin Electron istemcisine taşındı). Ortam değişkenleri:
+`KIOSK_HOST` (varsayılan `0.0.0.0`), `KIOSK_PORT`, `KIOSK_DB`,
+`KIOSK_ADMIN_TOKEN` (bkz. `server.py` başı).
+
+Panelde artık yalnızca eski (arşiv) `tost-kiosk.service` durdurulmuş/devre
+dışı duruyor — dosyalar duruyor, geri dönüş gerekirse
+`sudo systemctl enable --now tost-kiosk.service`.
 
 ### Frontend (React) — geliştirme
 
@@ -112,8 +130,10 @@ npm run dev     # Vite dev sunucusu — backend'e VITE_API_BASE ile işaret edin
 ```
 
 `src/api.js`'teki `API_BASE`, `VITE_API_BASE` build-zamanı değişkeniyle ya da
-çalışma zamanında `?api=http://...` sorgu paramla değiştirilebilir; varsayılan
-panelin adresi (`http://10.42.0.74:8080`).
+çalışma zamanında `?api=http://...` sorgu paramla değiştirilebilir; hiçbiri
+yoksa `http://localhost:8080`'a düşer (tarayıcıda yerel geliştirme). Paketlenmiş
+Electron uygulamasında bu adres `electron/main.cjs`'in çözdüğü
+`TOST_BACKEND_URL`'den geliyor — bkz. aşağıdaki "Client Mode masaüstü paketi".
 
 ### Frontend (React) — Electron/AppImage derleme (Node kurmadan, Docker ile)
 
@@ -134,6 +154,43 @@ kendi makineniz aynı x86_64 mimaride).
 
 > `ca-certificates` adımı gerekli — imajda yoksa Electron/AppImage indirmeleri
 > `x509: certificate signed by unknown authority` hatasıyla başarısız olur.
+
+### Client Mode masaüstü paketi (.deb)
+
+AppImage'ın yanına, standart Ubuntu/Debian kurulumu için `.deb` hedefi de
+eklendi — kurulunca uygulama menüsüne kendiliğinden (elle `.desktop` dosyası
+yazmadan) girer, kendi ikonuyla görünür.
+
+```bash
+cd frontend-react
+docker run --rm -v $PWD:/app -w /app node:20-bookworm-slim npm run build
+docker run --rm -v $PWD:/app -w /app \
+  -v ~/.docker-cache/electron:/root/.cache/electron \
+  -v ~/.docker-cache/electron-builder:/root/.cache/electron-builder \
+  node:20-bookworm-slim bash -c '
+    apt-get update -qq && apt-get install -y -qq ca-certificates >/dev/null
+    update-ca-certificates >/dev/null
+    npx electron-builder --linux AppImage deb --x64'
+```
+
+Kurulum (bu makinede ya da panelde):
+
+```bash
+sudo apt install ./release/"Tost Sırası - Client_2.0.0_amd64.deb"
+```
+
+Uygulama menüsünden "Tost Sırası - Client" ile açılır; masaüstüne kısayol
+istenirse menüdeki simge normal Ubuntu davranışıyla sürüklenip bırakılabilir
+— ekstra script gerekmez.
+
+**⚠️ Varsayılan backend adresi ağınıza özeldir.** Paket
+`TOST_BACKEND_URL=http://10.42.0.1:8080` varsayılanıyla gelir — bu yalnızca
+bu depoyu hazırlayan geliştiricinin **kendi ev ağında** çalışır. Uygulama ilk
+açılışta `~/.config/tost-kiosk-client/config.env` dosyasını (yoksa) bu
+varsayılanla oluşturur; **kendi backend'inizi ayakta tutup** bu dosyadaki
+`TOST_BACKEND_URL` satırını kendi IP'nize göre değiştirip uygulamayı yeniden
+başlatmanız gerekir. Ortam değişkeni (`TOST_BACKEND_URL=... `, örn. bir
+systemd `Environment=` satırı) varsa config.env'den önce o kullanılır.
 
 ### Testler
 

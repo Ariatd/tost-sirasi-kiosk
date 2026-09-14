@@ -1,16 +1,22 @@
 #!/usr/bin/env python3
 """
-Tost Sirasi Kiosk — backend.
+Tost Sirasi Kiosk — backend (SUNUCU MODU).
 
-Sadece Python standart kutuphanesi + pyserial kullanir (Flask/pip GEREKMEZ).
+Sadece Python standart kutuphanesi kullanir (Flask/pip GEREKMEZ, artik
+pyserial de GEREKMEZ). Bu makine (gelistiricinin kendi bilgisayari) artik
+donanima dogrudan baglı degil — panel PC'deki Electron "Client Mode"
+istemcisi kart okuyucuyu kendi tarafinda okuyup ayristirir ve sonucu
+POST /api/card-scan ile buraya gonderir.
 
 - http.server.ThreadingHTTPServer ile:
-    * statik dosyalar (static/)
+    * statik dosyalar (static/) — eski vanilla arayuz, artik sadece arsiv
     * JSON API (/api/...)
     * Server-Sent Events (/events) — kart okuma ve durum degisiklikleri anlik
-- Arka planda bir thread seri porttan (CH340, 9600 8N1) kart okur.
-  Cerceve ayrıştırma mantigi ~/nfc/nfc_reader.py ile BIREBIR aynidir:
-      AA | LEN(2, big-endian) | PAYLOAD(LEN bayt) | XOR(LEN+PAYLOAD) | BB
+- POST /api/card-scan {card_id, raw_hex}: panel PC'nin serialport ile kendi
+  okudugu ve ayristirdigi karti buraya bildirir; ayni is mantigina
+  (debounce, kullanici bul, aktif bilet kontrolu, SSE yayini) girer —
+  onceden yerel seri porttan geldiginde calisan mantikla BIREBIR ayni.
+- 0.0.0.0'da dinler (varsayilan) ki LAN'daki panel PC buraya erisebilsin.
 - Veritabani: SQLite (kiosk.db) — users (kalici), tickets, card_reads.
 
 Is kurallari reference.jsx ile ayni; basamak/onizleme/bloke hesabi
@@ -28,25 +34,16 @@ from datetime import datetime
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import urlparse, parse_qs
 
-try:
-    import serial  # pyserial
-except ImportError:
-    serial = None
-
 # --------------------------------------------------------------------------
 # Ayarlar
 # --------------------------------------------------------------------------
 HERE = os.path.dirname(os.path.abspath(__file__))
 STATIC_DIR = os.path.join(HERE, "static")
 DB_PATH = os.environ.get("KIOSK_DB", os.path.join(HERE, "kiosk.db"))
-HOST = os.environ.get("KIOSK_HOST", "127.0.0.1")
+# Sunucu modu: varsayilan 0.0.0.0 (panel PC LAN uzerinden erismeli).
+# Sadece bu makineden erisim istenirse KIOSK_HOST=127.0.0.1 verilebilir.
+HOST = os.environ.get("KIOSK_HOST", "0.0.0.0")
 PORT = int(os.environ.get("KIOSK_PORT", "8080"))
-
-SERIAL_PORT = os.environ.get(
-    "KIOSK_SERIAL", "/dev/serial/by-id/usb-1a86_USB_Serial-if00-port0"
-)
-SERIAL_PORT_FALLBACKS = ["/dev/ttyUSB1", "/dev/ttyUSB2", "/dev/ttyUSB0"]
-SERIAL_BAUD = 9600
 
 SLOT_MINUTES = 5
 SLOT_MS = SLOT_MINUTES * 60 * 1000
@@ -81,9 +78,6 @@ ADMIN_TOKEN = _load_admin_token()
 
 SCAN_DEBOUNCE_S = 2.5          # ayni kart bu sure icinde tek "okuma" sayilir
 TICKET_STALE_MS = 30 * 60 * 1000  # acilista bu kadar eski bekleyen biletler otomatik kapatilir
-
-FRAME_START = 0xAA
-FRAME_END = 0xBB
 
 # --------------------------------------------------------------------------
 # Global durum
@@ -247,42 +241,6 @@ def make_code(card_id: str, em4100: str) -> str:
     return str(n % 1000000).zfill(6)
 
 
-# --------------------------------------------------------------------------
-# Seri port okuma (parse mantigi nfc_reader.py ile birebir)
-# --------------------------------------------------------------------------
-def parse_frames(buf: bytearray):
-    out = []
-    while True:
-        start = buf.find(FRAME_START)
-        if start == -1:
-            buf.clear()
-            break
-        if start > 0:
-            del buf[:start]
-        if len(buf) < 4:
-            break
-        length = (buf[1] << 8) | buf[2]
-        total = 1 + 2 + length + 1 + 1
-        if length <= 0 or length > 64:
-            del buf[:1]
-            continue
-        if len(buf) < total:
-            break
-        frame = bytes(buf[:total])
-        payload = frame[3:3 + length]
-        chk = frame[3 + length]
-        end = frame[4 + length]
-        calc = 0
-        for b in frame[1:3 + length]:
-            calc ^= b
-        if end == FRAME_END and chk == calc:
-            out.append((payload, frame))
-            del buf[:total]
-        else:
-            del buf[:1]
-    return out
-
-
 def emit_scan(card_id: str, em4100: str, raw_hex: str = ""):
     """Kart okuma olayini kaydet + SSE ile yayinla (debounce yok — cagiran halleder)."""
     dt = datetime.now()
@@ -313,64 +271,29 @@ def emit_scan(card_id: str, em4100: str, raw_hex: str = ""):
     broadcast(evt)
 
 
-def record_scan(payload: bytes, frame: bytes):
-    """Seri porttan gelen cerceve -> debounce -> emit_scan."""
+def record_remote_scan(card_id: str, raw_hex: str = ""):
+    """Uzak istemciden (panel PC, /api/card-scan) gelen okuma -> debounce -> emit_scan.
+
+    card_id, panel tarafinda ayrıştırılmış cercevenin veri (payload) kismidir
+    (hex string, onceki yerel-seri-port suruminde payload.hex().upper() ile
+    ayni anlama gelir). em4100 cekirdegi buradan, ayni em4100_core() ile
+    turetilir — panel ayrica hesaplamak zorunda degil.
+    """
     global _last_scan_id, _last_scan_ts
-    card_id = payload.hex().upper()
+    card_id = card_id.strip().upper()
+    try:
+        payload = bytes.fromhex(card_id)
+    except ValueError:
+        return None, "card_id gecerli bir hex dizisi degil"
     em4100 = em4100_core(payload)
 
     t = time.time()
     if card_id == _last_scan_id and (t - _last_scan_ts) < SCAN_DEBOUNCE_S:
         _last_scan_ts = t
-        return
+        return card_id, None  # debounce edildi ama hata degil
     _last_scan_id, _last_scan_ts = card_id, t
-    emit_scan(card_id, em4100, frame.hex().upper())
-
-
-def open_serial():
-    ports = [SERIAL_PORT] + [p for p in SERIAL_PORT_FALLBACKS if p != SERIAL_PORT]
-    for p in ports:
-        if not os.path.exists(p):
-            continue
-        try:
-            s = serial.Serial(p, SERIAL_BAUD, bytesize=serial.EIGHTBITS,
-                              parity=serial.PARITY_NONE, stopbits=serial.STOPBITS_ONE,
-                              timeout=0.2)
-            s.reset_input_buffer()
-            log(f"seri port acildi: {p}")
-            return s
-        except Exception as e:
-            log(f"seri port acilamadi ({p}): {e}")
-    return None
-
-
-def serial_loop():
-    if serial is None:
-        log("UYARI: pyserial yok — kart okuma devre disi (arayuz yine calisir)")
-        return
-    ser = None
-    while _running:
-        if ser is None:
-            ser = open_serial()
-            if ser is None:
-                time.sleep(3)
-                continue
-        buf = bytearray()
-        try:
-            while _running:
-                chunk = ser.read(256)
-                if chunk:
-                    buf += chunk
-                for payload, frame in parse_frames(buf):
-                    record_scan(payload, frame)
-        except Exception as e:
-            log(f"seri port hatasi ({e}); yeniden baglanilacak")
-            try:
-                ser.close()
-            except Exception:
-                pass
-            ser = None
-            time.sleep(2)
+    emit_scan(card_id, em4100, (raw_hex or card_id).strip().upper())
+    return card_id, None
 
 
 # --------------------------------------------------------------------------
@@ -575,6 +498,17 @@ class Handler(BaseHTTPRequestHandler):
         if p.startswith("/api/dev/") and self.client_address[0] not in ("127.0.0.1", "::1"):
             return self._send_json({"ok": False, "error": "dev uc noktalari sadece localhost"}, 403)
 
+        if p == "/api/card-scan":
+            # Panel PC (Client Mode) kendi okudugu/ayristirdigi karti bildirir.
+            card_id = (body.get("card_id") or "").strip()
+            raw_hex = (body.get("raw_hex") or "").strip()
+            if not card_id:
+                return self._send_json({"ok": False, "error": "card_id gerekli"}, 400)
+            result, err = record_remote_scan(card_id, raw_hex)
+            if err:
+                return self._send_json({"ok": False, "error": err}, 400)
+            return self._send_json({"ok": True, "card_id": result})
+
         if p == "/api/order":
             ticket, err = validate_and_create_ticket(
                 body.get("card_id", ""), body.get("scheduled_time", 0)
@@ -719,9 +653,8 @@ def main():
     db_init()
     log(f"DB: {DB_PATH}")
     log(f"admin token: {ADMIN_TOKEN}  ({_TOKEN_FILE})")
-
-    th = threading.Thread(target=serial_loop, name="serial", daemon=True)
-    th.start()
+    log("sunucu modu: yerel seri port okuma yok, kart okumalari "
+        "POST /api/card-scan ile (panel PC / Client Mode) bekleniyor")
 
     srv = ThreadingHTTPServer((HOST, PORT), Handler)
     srv.daemon_threads = True

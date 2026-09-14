@@ -1,19 +1,23 @@
 // Tost Sırası — backend istemcisi.
-// AYNI gerçek backend'e (~/tost-kiosk/server.py) bağlanır; server.py hiç
-// değişmedi. Kullanılan uçlar:
+// AYNI gerçek backend API'sine bağlanır (backend/server.py — mimari artık
+// "Client Mode": backend geliştiricinin kendi bilgisayarında, kart okuma
+// panel PC'nin Electron istemcisinde). Kullanılan uçlar:
 //   GET  /api/state            -> {type:"state", now, slot_ms, tickets:[...]}
 //   GET  /api/user?card_id=    -> {user: {...}|null}
 //   POST /api/order            {card_id, scheduled_time} -> {ok, ticket} | {ok:false, error}
 //   POST /api/register         {card_id, first_name, last_name} -> {ok, user}
 //   POST /api/pickup           {ticket_id} -> {ok}
 //   GET  /events                (SSE) "state" ve "scan" olayları
-
-// Build zamanında sabitlenir (Vite): .env / --define ile değiştirilebilir.
-// Elektron paketinde varsayılan olarak panel PC'nin LAN adresi.
+//
+// Adres HARDCODED DEĞİL: Electron paketinde electron/main.cjs, sayfayı
+// yüklerken TOST_BACKEND_URL ortam değişkenini ?api= sorgu param olarak
+// ekler (bkz. loadKioskApp()). Tarayıcıda `npm run dev` ile test ederken
+// VITE_API_BASE ya da ?api= kullanılabilir; hiçbiri yoksa yerel geliştirme
+// varsayımıyla localhost'a düşer.
 export const API_BASE = (
   new URLSearchParams(window.location.search).get('api') ||
   import.meta.env.VITE_API_BASE ||
-  'http://10.42.0.74:8080'
+  'http://localhost:8080'
 ).replace(/\/+$/, '');
 
 export async function api(path, body) {

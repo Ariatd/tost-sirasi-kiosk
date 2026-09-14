@@ -1,0 +1,115 @@
+<!doctype html>
+<html lang="tr">
+<head>
+<meta charset="utf-8" />
+<title>Kart okuyucu bulunamadı</title>
+<style>
+  :root {
+    --bg-deep: #17110d;
+    --surface: #241b14;
+    --line: #3a2c20;
+    --text-primary: #f5ede3;
+    --text-muted: #a6957f;
+    --amber: #e08c34;
+    --blocked: #c4453b;
+  }
+  * { box-sizing: border-box; }
+  html, body {
+    margin: 0; height: 100%;
+    background: var(--bg-deep);
+    color: var(--text-primary);
+    font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+  }
+  body {
+    display: flex; flex-direction: column; align-items: center; justify-content: center;
+    text-align: center; gap: 18px; padding: 40px;
+  }
+  .icon { font-size: 64px; }
+  h1 { font-size: 26px; font-weight: 700; margin: 0; max-width: 560px; }
+  p { color: var(--text-muted); font-size: 15px; max-width: 480px; margin: 0; line-height: 1.5; }
+  .status { font-size: 13px; color: var(--blocked); min-height: 18px; }
+  button {
+    margin-top: 8px;
+    background: var(--amber);
+    color: #1c1208;
+    border: none;
+    border-radius: 12px;
+    padding: 14px 30px;
+    font-size: 16px;
+    font-weight: 600;
+    cursor: pointer;
+    font-family: inherit;
+  }
+  button:hover { filter: brightness(1.08); }
+  button:disabled { opacity: 0.6; cursor: default; }
+  .clock { position: fixed; top: 18px; right: 22px; color: var(--text-muted); font-size: 13px; }
+  .quit-btn {
+    position: fixed; top: 14px; left: 18px;
+    background: transparent;
+    color: var(--text-muted);
+    border: 1px solid var(--line);
+    border-radius: 10px;
+    padding: 8px 16px;
+    font-size: 13px;
+    font-weight: 600;
+    margin-top: 0;
+  }
+  .quit-btn:hover { color: var(--text-primary); border-color: var(--text-muted); filter: none; }
+  .actions { display: flex; gap: 12px; align-items: center; }
+</style>
+</head>
+<body>
+  <button class="quit-btn" id="quitBtn">✕ Kapat</button>
+  <div class="clock" id="clock"></div>
+  <div class="icon">🔌</div>
+  <h1 id="title">Bu cihazda kart okuyucu mekanizması bulunmamaktadır</h1>
+  <p id="detail">
+    Cihaza bağlı bir kart okuyucu (CH340 USB-seri) bulunamadı. Okuyucuyu takıp
+    "Tekrar Dene"ye dokunun.
+  </p>
+  <div class="actions">
+    <button id="retryBtn">↻ Tekrar Dene</button>
+  </div>
+  <div class="status" id="status"></div>
+
+  <script>
+    // main process farkli bir uyari icin (orn. backend adresi ayarlanmamis)
+    // ?title=&detail=&hideRetry=1 ile ayni sayfayi yeniden kullanabilir.
+    const qs = new URLSearchParams(location.search);
+    if (qs.get('title')) document.getElementById('title').textContent = qs.get('title');
+    if (qs.get('detail')) document.getElementById('detail').textContent = qs.get('detail');
+    if (qs.get('icon')) document.querySelector('.icon').textContent = qs.get('icon');
+    if (qs.get('hideRetry') === '1') document.getElementById('retryBtn').style.display = 'none';
+
+    function tickClock() {
+      document.getElementById('clock').textContent =
+        new Date().toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit' });
+    }
+    tickClock();
+    setInterval(tickClock, 1000);
+
+    const quitBtn = document.getElementById('quitBtn');
+    quitBtn.addEventListener('click', () => {
+      if (window.tostNative?.quit) window.tostNative.quit();
+    });
+
+    const btn = document.getElementById('retryBtn');
+    const status = document.getElementById('status');
+    btn.addEventListener('click', async () => {
+      btn.disabled = true;
+      status.textContent = 'Taranıyor…';
+      try {
+        const found = await window.tostNative.retryReaderScan();
+        if (!found) {
+          status.textContent = 'Yine bulunamadı. Bağlantıyı kontrol edip tekrar deneyin.';
+        }
+        // found ise main process zaten gercek uygulamayi yukleyecek.
+      } catch (e) {
+        status.textContent = 'Hata: ' + e;
+      } finally {
+        btn.disabled = false;
+      }
+    });
+  </script>
+</body>
+</html>

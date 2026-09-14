@@ -1,13 +1,16 @@
 [Unit]
-Description=Tost Sirasi kiosk penceresi (React + Electron / AppImage)
-After=graphical-session.target tost-kiosk.service
+Description=Tost Sirasi Client Mode (panel: seri okuyucu + uzak backend istemcisi)
+After=graphical-session.target network-online.target
+Wants=network-online.target
 PartOf=graphical-session.target
 Requisite=graphical-session.target
 
 [Service]
 Type=simple
-# backend hazir olana kadar bekle (ayni desen: pywebview servisiyle birebir)
-ExecStartPre=/bin/sh -c 'for i in $(seq 1 120); do curl -sf -o /dev/null http://127.0.0.1:8080/api/health && exit 0; sleep 1; done; exit 0'
+# uzak backend'in (gelistiricinin kendi bilgisayari) agi hazir olsun diye
+# kisa bir bekleme - health check GEREKLI DEGIL, TOST_BACKEND_URL yanlissa
+# uygulama zaten kendi uyari ekranini gosterir.
+ExecStartPre=/bin/sleep 3
 ExecStart=%h/tost-kiosk-electron/run.sh
 Restart=always
 RestartSec=3

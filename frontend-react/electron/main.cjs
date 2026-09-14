@@ -1,59 +1,254 @@
-// Tost Sırası — Electron ana süreç.
-// React build'ini (dist/index.html) çerçevesiz tam ekran gösterir; pywebview
-// sürümüyle aynı görsel sonuç (fullscreen + frameless). Backend'e (server.py,
-// http://10.42.0.74:8080) doğrudan fetch/EventSource ile bağlanılır.
+// Tost Sırası — Electron ana süreç (CLIENT MODE).
 //
-// NOT — webSecurity: false: renderer file:// kökeninden backend'in farklı
-// (http://10.42.0.74:8080) köküne fetch/SSE atıyor. server.py'ye CORS başlığı
-// EKLEMEDEN (backend'e dokunmama ilkesi) bunun tek pratik yolu budur. Uygulama
-// yalnızca kendi paketlenmiş arayüzünü yükler, dışarıdan içerik/gezinme kabul
-// etmez — kapalı bir kiosk için kabul edilebilir bir ödün.
-const { app, BrowserWindow, ipcMain, nativeImage } = require('electron');
-const path = require('path');
+// Bu makine artık backend'e bağlı değil — panel PC'nin KENDİSİ kart
+// okuyucuyu (CH340, 9600 8N1) doğrudan burada, serialport ile okur,
+// çerçeveyi ayrıştırır (bkz. serial-parser.cjs — backend/server.py'nin
+// eski parse_frames()'iyle birebir) ve sonucu uzak backende
+// (TOST_BACKEND_URL, ör. http://192.168.x.x:8080) POST /api/card-scan
+// ile bildirir. Arayüzün geri kalanı (basamak/önizleme/bloke/kayıt)
+// AYNI React build'i — sadece API adresi artık localhost değil.
+//
+// Okuyucu bulunamazsa (SerialPort.list() boşsa / CH340 yoksa) normal
+// akışa hiç izin verilmez — tam ekran bir uyarı ekranı gösterilir.
+//
+// NOT — webSecurity: false: aynı önceki sürümdeki gerekçe: backend'e
+// CORS başlığı eklemeden (dokunmama ilkesi) file:// kökünden farklı bir
+// HTTP köküne fetch/SSE atmanın pratik yolu bu.
+"use strict";
+
+const { app, BrowserWindow, ipcMain, nativeImage } = require("electron");
+const path = require("path");
+const fs = require("fs");
+const os = require("os");
+const http = require("http");
+const { SerialPort } = require("serialport");
+const { parseFrames, em4100Core } = require("./serial-parser.cjs");
 
 let win;
-// build-resources/icon.png ile ayni dosyanin bir kopyasi (public/icon.png ->
-// dist/icon.png); paketlenmis uygulamada calisma anindaki pencere ikonu
-// icin build-resources'a degil, dist icindeki bu kopyaya bakiyoruz.
-const ICON_PATH = path.join(__dirname, '..', 'dist', 'icon.png');
-// nativeImage.createFromPath asar-paketli yoldan dogrudan okur; BrowserWindow'a
-// ham dosya yolu yerine hazir NativeImage vermek + olusturduktan sonra
-// win.setIcon() ile tekrar uygulamak, Linux'ta (X11/_NET_WM_ICON) bazi pencere
-// yoneticilerinde constructor'daki icon: seceneginin tek basina islememesi
-// bilinen bir Electron/Linux sorunu - iki yontemi birlikte kullanmak cozuyor.
+const ICON_PATH = path.join(__dirname, "..", "dist", "icon.png");
 const appIcon = nativeImage.createFromPath(ICON_PATH);
-app.setName('Tost Sırası');
+app.setName("Tost Sırası");
+
+// ---------------------------------------------------------------------
+// Backend adresi — HARDCODED DEĞİL. Sırasıyla:
+//   1) TOST_BACKEND_URL ortam değişkeni (run.sh / systemd Environment=)
+//   2) ~/.config/tost-kiosk-client/config.env dosyası (TOST_BACKEND_URL=…)
+//      — .deb kurulumundan menüden açılışta bu kullanılır. Dosya yoksa
+//      İLK açılışta varsayılan değerle OLUŞTURULUR, böylece kurulumu
+//      yapan kişi kendi ağına göre tek satırı değiştirebilir.
+//   3) Varsayılan: bu kurulumu yapan geliştiricinin kendi ağı
+//      (10.42.0.1) — BAŞKA BİR AĞDA ÇALIŞMAZ, config.env ile değiştirin.
+// ---------------------------------------------------------------------
+const DEFAULT_BACKEND_URL = "http://10.42.0.1:8080";
+const CONFIG_DIR = path.join(os.homedir(), ".config", "tost-kiosk-client");
+const CONFIG_FILE = path.join(CONFIG_DIR, "config.env");
+
+function resolveBackendUrl() {
+  if (process.env.TOST_BACKEND_URL && process.env.TOST_BACKEND_URL.trim()) {
+    return process.env.TOST_BACKEND_URL.trim();
+  }
+  try {
+    const content = fs.readFileSync(CONFIG_FILE, "utf8");
+    const m = content.match(/^\s*TOST_BACKEND_URL\s*=\s*(.+?)\s*$/m);
+    if (m && m[1]) return m[1].trim();
+  } catch (_) {
+    // dosya yok -> ilk calistirma, varsayilanla olustur
+    try {
+      fs.mkdirSync(CONFIG_DIR, { recursive: true });
+      fs.writeFileSync(
+        CONFIG_FILE,
+        "# Tost Sırası Client — backend adresi\n" +
+          "# Bu değer SADECE kurulumu yapan kişinin kendi ağında (varsayılan:\n" +
+          "# geliştiricinin ev ağı) çalışır. Kendi backend'inizi ayağa kaldırıp\n" +
+          "# buraya kendi IP'nizi yazın, sonra uygulamayı yeniden başlatın.\n" +
+          `TOST_BACKEND_URL=${DEFAULT_BACKEND_URL}\n`
+      );
+    } catch (e) {
+      console.error("[client-mode] config.env olusturulamadi:", e.message);
+    }
+  }
+  return DEFAULT_BACKEND_URL;
+}
+
+const BACKEND_URL = resolveBackendUrl().replace(/\/+$/, "");
+const CH340_VENDOR_ID = "1a86"; // QinHeng Electronics
+
+let serialPort = null;
+let serialBuf = Buffer.alloc(0);
+let lastCardId = null;
+let lastCardTs = 0;
+const CLIENT_DEBOUNCE_MS = 1500; // sunucu zaten debounce ediyor (2.5s); bu sadece ag trafigini azaltir
+
+// ---------------------------------------------------------------------
+// Backend'e bildirim
+// ---------------------------------------------------------------------
+function postCardScan(cardId, rawHex) {
+  if (!BACKEND_URL) return;
+  const data = JSON.stringify({ card_id: cardId, raw_hex: rawHex });
+  let url;
+  try {
+    url = new URL(BACKEND_URL + "/api/card-scan");
+  } catch (e) {
+    console.error("[client-mode] gecersiz TOST_BACKEND_URL:", BACKEND_URL);
+    return;
+  }
+  const req = http.request(
+    {
+      hostname: url.hostname,
+      port: url.port || 80,
+      path: url.pathname,
+      method: "POST",
+      headers: { "Content-Type": "application/json", "Content-Length": Buffer.byteLength(data) },
+      timeout: 5000,
+    },
+    (res) => {
+      res.resume();
+      if (res.statusCode >= 400) console.error("[client-mode] backend hata dondu:", res.statusCode);
+    }
+  );
+  req.on("timeout", () => req.destroy(new Error("zaman asimi")));
+  req.on("error", (e) => console.error("[client-mode] backend istegi basarisiz:", e.message));
+  req.write(data);
+  req.end();
+}
+
+// ---------------------------------------------------------------------
+// Kart okuyucu (CH340) bul ve dinlemeye başla
+// ---------------------------------------------------------------------
+async function findReaderPort() {
+  const ports = await SerialPort.list();
+  return (
+    ports.find((p) => (p.vendorId || "").toLowerCase() === CH340_VENDOR_ID) ||
+    ports.find((p) => /ch340|qinheng/i.test(p.manufacturer || "")) ||
+    null
+  );
+}
+
+function closeReaderIfOpen() {
+  if (serialPort) {
+    try {
+      if (serialPort.isOpen) serialPort.close();
+    } catch (_) {
+      /* yoksay */
+    }
+  }
+  serialPort = null;
+  serialBuf = Buffer.alloc(0);
+}
+
+function openReader(portInfo) {
+  serialPort = new SerialPort({
+    path: portInfo.path,
+    baudRate: 9600,
+    dataBits: 8,
+    parity: "none",
+    stopBits: 1,
+  });
+  serialBuf = Buffer.alloc(0);
+
+  serialPort.on("data", (chunk) => {
+    serialBuf = Buffer.concat([serialBuf, chunk]);
+    const { frames, rest } = parseFrames(serialBuf);
+    serialBuf = rest;
+    for (const { payload, frame } of frames) {
+      const cardId = payload.toString("hex").toUpperCase();
+      const rawHex = frame.toString("hex").toUpperCase();
+      const now = Date.now();
+      if (cardId === lastCardId && now - lastCardTs < CLIENT_DEBOUNCE_MS) {
+        lastCardTs = now;
+        continue;
+      }
+      lastCardId = cardId;
+      lastCardTs = now;
+      console.log("[client-mode] kart okundu:", cardId, "em4100", em4100Core(payload));
+      postCardScan(cardId, rawHex);
+    }
+  });
+  serialPort.on("error", (e) => console.error("[client-mode] seri port hatasi:", e.message));
+  serialPort.on("close", () => console.warn("[client-mode] seri port kapandi"));
+  console.log(
+    "[client-mode] okuyucu acildi:",
+    portInfo.path,
+    portInfo.vendorId || "",
+    portInfo.manufacturer || ""
+  );
+}
+
+// ---------------------------------------------------------------------
+// Ekranlar
+// ---------------------------------------------------------------------
+function loadNoReaderScreen(query) {
+  win.loadFile(path.join(__dirname, "no-reader.html"), { search: query || "" });
+}
+
+function loadKioskApp() {
+  win.loadFile(path.join(__dirname, "..", "dist", "index.html"), {
+    search: "api=" + encodeURIComponent(BACKEND_URL),
+  });
+}
+
+async function tryStartReaderThenApp() {
+  const portInfo = await findReaderPort();
+  if (!portInfo) return false;
+  closeReaderIfOpen();
+  openReader(portInfo);
+  loadKioskApp();
+  return true;
+}
 
 function createWindow() {
   win = new BrowserWindow({
     fullscreen: true,
     frame: false,
     autoHideMenuBar: true,
-    backgroundColor: '#17110D',
-    icon: appIcon, // pencere/görev çubuğu ikonu — launcher ikonuyla (electron-builder) aynı dosya
+    backgroundColor: "#17110D",
+    icon: appIcon,
     webPreferences: {
-      preload: path.join(__dirname, 'preload.cjs'),
+      preload: path.join(__dirname, "preload.cjs"),
       contextIsolation: true,
       nodeIntegration: false,
       webSecurity: false,
     },
   });
-  win.setIcon(appIcon); // bkz. yukarıdaki not
+  win.setIcon(appIcon);
   win.setMenuBarVisibility(false);
-  win.loadFile(path.join(__dirname, '..', 'dist', 'index.html'));
-
-  win.on('closed', () => {
+  win.on("closed", () => {
     win = null;
+    closeReaderIfOpen();
   });
 }
 
-ipcMain.handle('tost:minimize', () => win?.minimize());
-ipcMain.handle('tost:toggleFullscreen', () => win?.setFullScreen(!win.isFullScreen()));
-ipcMain.handle('tost:quit', () => app.quit());
+async function boot() {
+  console.log("[client-mode] backend adresi:", BACKEND_URL, " (config:", CONFIG_FILE, ")");
+  createWindow();
 
-app.whenReady().then(createWindow);
+  if (!BACKEND_URL) {
+    loadNoReaderScreen(
+      "icon=" + encodeURIComponent("⚠️") +
+      "&hideRetry=1" +
+      "&title=" + encodeURIComponent("Backend adresi ayarlanmamış") +
+      "&detail=" + encodeURIComponent(
+        "TOST_BACKEND_URL ortam değişkeni ayarlanmadan Client Mode başlatılamaz. " +
+        "run.sh içindeki TOST_BACKEND_URL değerini kontrol edin."
+      )
+    );
+    return;
+  }
 
-app.on('window-all-closed', () => app.quit());
-app.on('activate', () => {
-  if (BrowserWindow.getAllWindows().length === 0) createWindow();
+  const started = await tryStartReaderThenApp();
+  if (!started) loadNoReaderScreen("");
+}
+
+// ---------------------------------------------------------------------
+// IPC (preload.cjs -> window.tostNative)
+// ---------------------------------------------------------------------
+ipcMain.handle("tost:minimize", () => win?.minimize());
+ipcMain.handle("tost:toggleFullscreen", () => win?.setFullScreen(!win.isFullScreen()));
+ipcMain.handle("tost:quit", () => app.quit());
+ipcMain.handle("tost:retryReaderScan", () => tryStartReaderThenApp());
+
+app.whenReady().then(boot);
+app.on("window-all-closed", () => app.quit());
+app.on("activate", () => {
+  if (BrowserWindow.getAllWindows().length === 0) boot();
 });

@@ -16,6 +16,8 @@ frontend-react/dist/
 frontend-react/release/
 frontend-react/*.log
 frontend-react/npm-debug.log*
+# makineye ozel gercek backend adresi (ornek sablon .example olarak repoda kalir)
+frontend-react/client-mode.env
 
 # --- backend: pywebview'in pip'siz vendörlenmiş bağımlılıkları ---
 # (büyük, üçüncü parti, kaynak değil — gerekirse README'deki adımlarla

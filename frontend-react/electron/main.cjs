@@ -42,7 +42,14 @@ if (!gotSingleInstanceLock) {
 let win;
 const ICON_PATH = path.join(__dirname, "..", "dist", "icon.png");
 const appIcon = nativeImage.createFromPath(ICON_PATH);
-app.setName("Tost Sırası");
+// ONEMLI: burada Turkce/bosluklu bir isim ("Tost Sırası") KULLANMAYIN.
+// Bu deger Electron'un Linux'ta ayarladigi X11 WM_CLASS'a karisir; .deb'in
+// ürettigi masaustu girdisindeki StartupWMClass (asagida package.json'da
+// "tost-kiosk-client" olarak ayarli) ile BIREBIR ayni olmali. Uyusmazsa
+// GNOME calisan pencereyi kurulu .desktop girdisiyle eslestiremiyor ve
+// ham X11 ozelliklerine (bozuk WM_NAME kodlamasi + bos _NET_WM_ICON) geri
+// dusuyor - panelde gorulen "jenerik ikon + bozuk baslik" tam olarak bu.
+app.setName("tost-kiosk-client");
 
 // ---------------------------------------------------------------------
 // Backend adresi — HARDCODED DEĞİL. Sırasıyla:
@@ -213,6 +220,12 @@ async function tryStartReaderThenApp() {
 
 function createWindow() {
   win = new BrowserWindow({
+    // ASCII baslik: Electron'un Linux/X11'de kullandigi eski WM_NAME
+    // (STRING, Latin-1) ozelligi Turkce karakterleri ("ı" vb.) yanlis
+    // kodluyor (panelde "Tost SÄ±rasÄ±" gibi gorunuyordu). index.html/
+    // no-reader.html'in <title> etiketleri sayfa yuklenince bu degeri
+    // ezdigi icin page-title-updated'i asagida engelliyoruz.
+    title: "Tost Sirasi - Client",
     fullscreen: true,
     frame: false,
     autoHideMenuBar: true,
@@ -224,6 +237,9 @@ function createWindow() {
       nodeIntegration: false,
       webSecurity: false,
     },
+  });
+  win.on("page-title-updated", (event) => {
+    event.preventDefault();
   });
   win.setIcon(appIcon);
   win.setMenuBarVisibility(false);

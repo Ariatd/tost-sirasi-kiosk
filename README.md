@@ -161,27 +161,21 @@ AppImage'ın yanına, standart Ubuntu/Debian kurulumu için `.deb` hedefi de
 eklendi — kurulunca uygulama menüsüne kendiliğinden (elle `.desktop` dosyası
 yazmadan) girer, kendi ikonuyla görünür.
 
-```bash
-cd frontend-react
-docker run --rm -v $PWD:/app -w /app node:20-bookworm-slim npm run build
-docker run --rm -v $PWD:/app -w /app \
-  -v ~/.docker-cache/electron:/root/.cache/electron \
-  -v ~/.docker-cache/electron-builder:/root/.cache/electron-builder \
-  node:20-bookworm-slim bash -c '
-    apt-get update -qq && apt-get install -y -qq ca-certificates >/dev/null
-    update-ca-certificates >/dev/null
-    npx electron-builder --linux AppImage deb --x64'
-```
+#### Hazır paketi indirip kurmak (herhangi bir Ubuntu 24.04, x64 cihaz)
 
-Kurulum (bu makinede ya da panelde):
+Kendi bilgisayarınızda derlemenize gerek yok — GitHub Release'den doğrudan
+indirip kurabilirsiniz (panel PC dahil, SCP/dosya yoluna bağımlı kalmadan):
 
 ```bash
-sudo apt install ./release/"Tost Sırası - Client_2.0.0_amd64.deb"
+wget https://github.com/Ariatd/tost-sirasi-kiosk/releases/download/v2.0.2/tost-kiosk-client_2.0.2_amd64.deb
+sudo apt install ./tost-kiosk-client_2.0.2_amd64.deb
 ```
 
-Uygulama menüsünden "Tost Sırası - Client" ile açılır; masaüstüne kısayol
-istenirse menüdeki simge normal Ubuntu davranışıyla sürüklenip bırakılabilir
-— ekstra script gerekmez.
+Kurulunca uygulama menüsünde **"Tost Sırası - Client"** olarak görünür;
+masaüstüne kısayol istenirse menüdeki simge normal Ubuntu davranışıyla
+sürüklenip bırakılabilir — ekstra script gerekmez. Diğer sürümler için
+[Releases](https://github.com/Ariatd/tost-sirasi-kiosk/releases) sayfasına
+bakın.
 
 **⚠️ Varsayılan backend adresi ağınıza özeldir.** Paket
 `TOST_BACKEND_URL=http://10.42.0.1:8080` varsayılanıyla gelir — bu yalnızca
@@ -191,6 +185,31 @@ varsayılanla oluşturur; **kendi backend'inizi ayakta tutup** bu dosyadaki
 `TOST_BACKEND_URL` satırını kendi IP'nize göre değiştirip uygulamayı yeniden
 başlatmanız gerekir. Ortam değişkeni (`TOST_BACKEND_URL=... `, örn. bir
 systemd `Environment=` satırı) varsa config.env'den önce o kullanılır.
+
+#### Kendi paketinizi derlemek
+
+```bash
+cd frontend-react
+docker run --rm -v $PWD:/app -w /app node:20-bookworm-slim npm run build
+docker run --rm -v $PWD:/app -w /app \
+  -v ~/.docker-cache/electron:/root/.cache/electron \
+  -v ~/.docker-cache/electron-builder:/root/.cache/electron-builder \
+  node:20-bookworm-slim bash -c '
+    apt-get update -qq && apt-get install -y -qq ca-certificates binutils fakeroot >/dev/null
+    update-ca-certificates >/dev/null
+    npx electron-builder --linux AppImage deb --x64'
+```
+
+`binutils`/`fakeroot` yalnızca `.deb` hedefi için gerekli (fpm aracı `ar`
+komutunu kullanıyor). Çıktı `frontend-react/release/tost-kiosk-client_<sürüm>_amd64.deb`.
+Kurulum aynı: `sudo apt install ./release/tost-kiosk-client_<sürüm>_amd64.deb`.
+
+Bir GitHub Release olarak yayınlamak için:
+
+```bash
+gh release create v<sürüm> "frontend-react/release/tost-kiosk-client_<sürüm>_amd64.deb" \
+  --title "Client Mode v<sürüm> (.deb)" --notes "..."
+```
 
 ### Testler
 

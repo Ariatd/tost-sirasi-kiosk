@@ -5,65 +5,87 @@ tostunun ne zaman hazır olacağını seçer; panel ekranı sırayı gösterir; 
 biletleri/kayıtları yönetebileceğiniz ayrı bir masaüstü aracı vardır.
 
 Panel donanımı: temassız kart okuyucu (CH340 USB-seri, 125 kHz EM4100) takılı
-bir Ubuntu 24.04 mini PC (panelpc). Backend ve kiosk arayüzü o makinede
-sürekli çalışır; bu depo hem o kaynak kodu hem de kendi bilgisayarınızda
-derlenip panele **dağıtılan** React/Electron sürümünü bir arada tutar.
+bir Ubuntu 24.04 mini PC (panelpc). **Mimari iki makineye bölünmüş
+durumda:** sipariş mantığı + veritabanı geliştiricinin kendi bilgisayarında
+çalışır, panel PC yalnızca "Client Mode" (kart okuyucu + uzak backend
+istemcisi) çalıştırır. Bu depo her iki tarafın da kaynak kodunu bir arada
+tutar; panele dağıtım artık GitHub Release üzerinden yayınlanan bir `.deb`
+paketiyle yapılır.
 
 ## Mimari
 
 ```
-┌──────────────┐   9600 8N1 seri    ┌────────────────────────────┐
-│ NFC okuyucu  │ ─────────────────▶ │ backend/server.py            │
-│ (CH340,      │  AA|len|veri|xor|  │ Python stdlib: http.server   │
-│  EM4100)     │  BB çerçevesi      │ + SQLite + Server-Sent Events│
-└──────────────┘                    └──────────────┬────────────┘
-                                                     │ HTTP + SSE
-                        ┌────────────────────────────┼───────────────────┐
-                        │                            │                   │
-               ┌────────▼────────┐         ┌─────────▼────────┐  ┌───────▼───────┐
-               │ backend/static   │         │ frontend-react     │  │ admin-tool     │
-               │ (vanilla JS,     │         │ React → Electron/   │  │ tost-admin.py  │
-               │  pywebview'de     │         │ AppImage — panelde  │  │ (Tkinter, kendi│
-               │  çalıştı, artık   │         │ CANLI sürüm         │  │  bilgisayardan)│
-               │  arşiv/yedek)     │         │                      │  │                │
-               └──────────────────┘         └──────────────────────┘  └────────────────┘
+              (geliştiricinin kendi bilgisayarı)             (panel PC — panelpc)
+        ┌───────────────────────────────────┐        ┌─────────────────────────────┐
+        │ backend/server.py                 │        │ Client Mode (Electron)      │
+        │ Python stdlib: http.server        │◀──────▶│ .deb ile kurulu             │
+        │ + SQLite + Server-Sent Events     │  HTTP  │ (tost-kiosk-client)         │
+        │ systemd --user servisi:           │  + SSE │ systemd --user servisi:     │
+        │ tost-kiosk-backend.service        │  (LAN) │ tost-kiosk-electron.service │
+        │ 0.0.0.0:8080                      │        │                             │
+        └───────────────┬───────────────────┘        │  ┌───────────────────────┐  │
+                         │                            │  │ CH340 seri okuyucu    │  │
+                         │ admin API (X-Admin-Token)  │  │ (125 kHz EM4100)      │  │
+                         │                            │  └───────────┬───────────┘  │
+                ┌────────▼────────┐                   │   POST /api/card-scan ─────┼──▶ (yukarıya)
+                │ admin-tool       │                   └─────────────────────────────┘
+                │ tost-admin.py    │
+                │ (Tkinter, kendi  │
+                │  bilgisayarınızdan) │
+                └──────────────────┘
 ```
 
-Panelde şu an **iki** systemd `--user` servisi vardır:
+Panelde tek bir systemd `--user` servisi vardır:
 
-- `tost-kiosk.service` — backend, her zaman çalışır, hiç değişmedi.
-- `tost-kiosk-electron.service` — React/Electron kiosk penceresi (**canlı sürüm**).
-- `tost-kiosk-app.service` — eski pywebview penceresi (**devre dışı**, dosyalar
-  duruyor, geri dönüş gerekirse `systemctl --user enable --now` yeterli).
+- `tost-kiosk-electron.service` — Client Mode (Electron): CH340 okuyucuyu
+  yerelde okur, `POST /api/card-scan` ile yukarıdaki backend'e bildirir,
+  aynı React arayüzünü gösterir. `.deb` paketinin kurduğu
+  `/usr/bin/tost-kiosk-client` ikilisini çalıştırır (bkz.
+  [Client Mode masaüstü paketi](#client-mode-masaüstü-paketi-deb)).
+
+Eski, tek-makinede-tam-yerel mimarinin kalıntıları (`backend/static` —
+vanilla JS + pywebview, ve panelde kendi backend'ini çalıştıran eski
+`tost-kiosk.service`/`tost-kiosk-app.service`) artık **kullanılmıyor**;
+`backend/static` depoda arşiv olarak duruyor, paneldeki eski servisler
+kaldırıldı.
 
 ## Depo yapısı
 
 ```
-backend/          panelde çalışan gerçek kaynak (server.py, static/, deploy/)
-frontend-react/   React kaynağı + Electron paketleme (Vite, electron-builder)
+backend/          backend kaynağı — artık PANELDE DEĞİL, geliştiricinin
+                   kendi bilgisayarında systemd --user servisi olarak çalışır
+                   (server.py, static/ [arşiv], deploy/)
+frontend-react/   Client Mode kaynağı: React + Electron (serialport),
+                   Vite + electron-builder ile AppImage/.deb paketleme
 admin-tool/       tost-admin.py — Tkinter yönetim uygulaması (kendi bilgisayarınızda)
 docs/             ekran görüntüleri / notlar (opsiyonel)
 ```
-
-`backend/` panelin **kopyasıdır** — git ile burada versiyonlanır, ama panele
-gönderim hâlâ elle (rsync/scp) yapılır; bkz. [Deploy](#deploy).
 
 ## Neden bu kararlar
 
 - **SQLite, NoSQL değil.** Veri küçük ve tamamen ilişkisel (biletler, kullanıcılar,
   ham kart okumaları) — ayrı bir veritabanı sunucusu kurmanın hiçbir faydası yok.
-- **Python stdlib, Flask değil.** Panel PC'nin paket erişimi kısıtlı; `pip` bile
-  yoktu. `http.server.ThreadingHTTPServer` + `sqlite3` + Server-Sent Events ile
-  hiçbir üçüncü parti bağımlılık olmadan (pyserial hariç, o zaten kuruluydu) aynı
-  işi görüyoruz.
+- **Python stdlib, Flask değil.** Başlangıçta panel PC'nin paket erişimi
+  kısıtlıydı (pip bile yoktu); backend artık geliştiricinin kendi
+  bilgisayarında çalışsa da aynı sıfır-bağımlılık yaklaşımı korundu —
+  `http.server.ThreadingHTTPServer` + `sqlite3` + Server-Sent Events.
+- **Backend geliştirici makinesinde, panelde yalnızca Client Mode.**
+  Panelin kendi backend/DB'sini çalıştırmasına gerek yok; sipariş mantığı
+  tek bir yerde (kendi bilgisayarınızda) çalışır, panel sadece kart okuyup
+  HTTP ile bildirir. Bu, panelin donanım arızası/format gibi durumlarda
+  veri kaybı riskini de ortadan kaldırır — biletler/kullanıcılar hiçbir
+  zaman panelde tutulmaz.
 - **Electron + React, panelde Node hiç yokken bile.** Panelde `node`/`npm`
   kurulamıyor (bağımlılık çakışmaları, kısıtlı erişim). Çözüm: React'i ve
-  Electron paketini **bu depodan, kendi bilgisayarınızda, Docker içinde** (pinlenmiş
-  Node 20 imajı) derleyip; panele yalnızca **derlenmiş, bağımsız çalışan
-  AppImage**'ı göndermek. Panelde Node'a hiç ihtiyaç yok.
-- **Aynı gerçek backend, iki frontend.** `backend/static` (vanilla JS) ve
-  `frontend-react` **aynı** `server.py`'nin API'sini (`/api/*`) ve olay akışını
-  (`/events` SSE) tüketir — backend hiçbir zaman iki kere yazılmadı.
+  Electron paketini **bu depodan, kendi bilgisayarınızda, Docker içinde**
+  (pinlenmiş Node 20 imajı) derleyip; panele yalnızca **derlenmiş,
+  bağımsız çalışan `.deb`** paketini göndermek. Panelde Node'a hiç
+  ihtiyaç yok.
+- **Dağıtım GitHub Release üzerinden.** `.deb` dosyası panele elle
+  (scp/rsync) taşınmak yerine bir GitHub Release'e asset olarak
+  yükleniyor; panel (ya da başka herhangi bir Ubuntu 24.04 cihazı) tek
+  başına `wget` + `apt install` ile indirip kurabiliyor — geliştiricinin
+  dosya yoluna/makinesine bağımlı kalmadan.
 
 ## İş mantığı özeti
 
@@ -117,9 +139,10 @@ seri port okuma panelin Electron istemcisine taşındı). Ortam değişkenleri:
 `KIOSK_HOST` (varsayılan `0.0.0.0`), `KIOSK_PORT`, `KIOSK_DB`,
 `KIOSK_ADMIN_TOKEN` (bkz. `server.py` başı).
 
-Panelde artık yalnızca eski (arşiv) `tost-kiosk.service` durdurulmuş/devre
-dışı duruyor — dosyalar duruyor, geri dönüş gerekirse
-`sudo systemctl enable --now tost-kiosk.service`.
+Panelde eski (tek-makine mimarisinden kalma) `tost-kiosk.service` tamamen
+kaldırıldı; `tost-kiosk-app.service` (en eski, pywebview tabanlı sürüm)
+dosyaları duruyor ama devre dışı. Panelde artık yalnızca
+`tost-kiosk-electron.service` (Client Mode) çalışıyor.
 
 ### Frontend (React) — geliştirme
 
@@ -135,25 +158,9 @@ yoksa `http://localhost:8080`'a düşer (tarayıcıda yerel geliştirme). Paketl
 Electron uygulamasında bu adres `electron/main.cjs`'in çözdüğü
 `TOST_BACKEND_URL`'den geliyor — bkz. aşağıdaki "Client Mode masaüstü paketi".
 
-### Frontend (React) — Electron/AppImage derleme (Node kurmadan, Docker ile)
-
-```bash
-cd frontend-react
-docker run --rm -v $PWD:/app -w /app node:20-bookworm-slim npm run build
-docker run --rm -v $PWD:/app -w /app \
-  -v ~/.docker-cache/electron:/root/.cache/electron \
-  -v ~/.docker-cache/electron-builder:/root/.cache/electron-builder \
-  node:20-bookworm-slim bash -c '
-    apt-get update -qq && apt-get install -y -qq ca-certificates >/dev/null
-    update-ca-certificates >/dev/null
-    npx electron-builder --linux AppImage --x64'
-```
-
-Çıktı: `frontend-react/release/Tost Sirasi-1.0.0.AppImage` (~104 MB, panel ve
-kendi makineniz aynı x86_64 mimaride).
-
-> `ca-certificates` adımı gerekli — imajda yoksa Electron/AppImage indirmeleri
-> `x509: certificate signed by unknown authority` hatasıyla başarısız olur.
+Electron/AppImage/`.deb` derleme ve panele kurulum için aşağıdaki
+[Client Mode masaüstü paketi (.deb)](#client-mode-masaüstü-paketi-deb)
+bölümüne bakın — Node kurmadan, Docker ile derlenir.
 
 ### Client Mode masaüstü paketi (.deb)
 
@@ -167,8 +174,8 @@ Kendi bilgisayarınızda derlemenize gerek yok — GitHub Release'den doğrudan
 indirip kurabilirsiniz (panel PC dahil, SCP/dosya yoluna bağımlı kalmadan):
 
 ```bash
-wget https://github.com/Ariatd/tost-sirasi-kiosk/releases/download/v2.0.2/tost-kiosk-client_2.0.2_amd64.deb
-sudo apt install ./tost-kiosk-client_2.0.2_amd64.deb
+wget https://github.com/Ariatd/tost-sirasi-kiosk/releases/download/v2.0.4/tost-kiosk-client_2.0.4_amd64.deb
+sudo apt install --reinstall ./tost-kiosk-client_2.0.4_amd64.deb
 ```
 
 Kurulunca uygulama menüsünde **"Tost Sırası - Client"** olarak görünür;
@@ -185,6 +192,33 @@ varsayılanla oluşturur; **kendi backend'inizi ayakta tutup** bu dosyadaki
 `TOST_BACKEND_URL` satırını kendi IP'nize göre değiştirip uygulamayı yeniden
 başlatmanız gerekir. Ortam değişkeni (`TOST_BACKEND_URL=... `, örn. bir
 systemd `Environment=` satırı) varsa config.env'den önce o kullanılır.
+
+Panelde zaten `tost-kiosk-electron.service` (bkz. aşağı) systemd `--user`
+servisi olarak çalışıyorsa, `apt install --reinstall` sonrası yeni sürümü
+devreye almak için:
+
+```bash
+systemctl --user restart tost-kiosk-electron.service
+```
+
+#### Panelde kalıcı/otomatik açılış (systemd)
+
+Panel bir kiosk olduğu için oturum açılır açılmaz tam ekran başlamalı ve
+kapatılırsa kendini toparlamalı. Bunun için `.deb`'in kurduğu ikiliyi bir
+systemd `--user` servisiyle sarmalıyoruz:
+
+```bash
+mkdir -p ~/.config/systemd/user
+cp frontend-react/deploy/tost-kiosk-electron.service ~/.config/systemd/user/
+systemctl --user daemon-reload
+systemctl --user enable --now tost-kiosk-electron.service
+```
+
+Servis dosyası `/usr/bin/tost-kiosk-client`'ı (update-alternatives ile
+`.deb`'in kurduğu gerçek ikiliye bağlı) `--disable-gpu
+--disable-software-rasterizer` ile çalıştırır ve `NO_AT_BRIDGE=1` ortam
+değişkenini ayarlar — panelde tespit edilen iki kararlılık sorununu
+giderir (bkz. [Bilinen kısıtlar](#bilinen-kısıtlar)).
 
 #### Kendi paketinizi derlemek
 
@@ -238,35 +272,49 @@ Token, panelde `~/tost-kiosk/admin_token` dosyasındadır (ilk açılışta rast
 kullanıcıları ve ham kart okumalarını 5 sn'de bir yeniler; silme/sıfırlama
 `X-Admin-Token` başlığıyla korunan uçları kullanır.
 
-## Deploy (panele gönderim)
+## Deploy
 
-Değişiklik yaptıktan sonra panele göndermek için:
+Backend ve Client Mode artık **iki farklı makinede** çalıştığı için deploy
+akışı da ikiye ayrılıyor.
+
+### Backend değiştiyse (kendi bilgisayarınız)
+
+Kod zaten yerelde çalıştığı için ağ üzerinden bir gönderim yok — sadece
+servisi yeniden başlatmak yeterli:
 
 ```bash
-# backend değiştiyse:
-rsync -az backend/server.py botek@10.42.0.74:~/tost-kiosk/server.py
-rsync -az backend/static/   botek@10.42.0.74:~/tost-kiosk/static/
-ssh botek@10.42.0.74 'systemctl restart tost-kiosk.service'   # server.py değiştiyse
-# static/ (app.js/admin.html/styles.css) değiştiyse backend'i yeniden başlatmaya
-# gerek yok, ama Electron/pywebview penceresi sayfayı SADECE açılışta yükler:
-ssh botek@10.42.0.74 'systemctl --user restart tost-kiosk-electron.service'
-
-# frontend-react değiştiyse: önce yukarıdaki Docker adımlarıyla AppImage'ı
-# yeniden derleyin, sonra:
-rsync -az "frontend-react/release/Tost Sirasi-1.0.0.AppImage" \
-  botek@10.42.0.74:~/tost-kiosk-electron/
-ssh botek@10.42.0.74 'chmod +x "~/tost-kiosk-electron/Tost Sirasi-1.0.0.AppImage" && \
-  systemctl --user restart tost-kiosk-electron.service'
+systemctl --user restart tost-kiosk-backend.service
+journalctl --user -u tost-kiosk-backend.service -f   # canlı log
 ```
 
-Panel PC'ye SSH şifreyle bağlanılıyor (anahtar tabanlı erişim kurulu değil);
-uzun komut dizilerinde her seferinde şifre girmemek için bir `ControlMaster`
-soketi açık tutmak pratik oluyor:
+### Client Mode (frontend-react) değiştiyse (panel PC)
+
+1. `frontend-react/package.json`'da `version`'ı artırın (ör. `2.0.4` →
+   `2.0.5`) ve `run.sh`'daki `APPIMAGE=` satırını buna göre güncelleyin.
+2. [Kendi paketinizi derlemek](#kendi-paketinizi-derlemek) bölümündeki
+   Docker komutlarıyla yeni `.deb`/AppImage'ı üretin.
+3. Yeni sürümü bir GitHub Release'e asset olarak ekleyin:
+   ```bash
+   gh release create v<sürüm> "frontend-react/release/tost-kiosk-client_<sürüm>_amd64.deb" \
+     --title "Client Mode v<sürüm> (.deb)" --notes "..."
+   ```
+4. Panelde (SSH ile ya da doğrudan panelin kendi terminalinden):
+   ```bash
+   wget https://github.com/Ariatd/tost-sirasi-kiosk/releases/download/v<sürüm>/tost-kiosk-client_<sürüm>_amd64.deb
+   sudo apt install --reinstall ./tost-kiosk-client_<sürüm>_amd64.deb
+   systemctl --user restart tost-kiosk-electron.service
+   ```
+
+Artık panele dosya **gönderilmiyor** (rsync/scp yok) — panel kendi
+başına GitHub'dan indirip kuruyor. Panel PC'ye SSH şifreyle bağlanılıyor
+(anahtar tabanlı erişim kurulu değil); tanılama/servis komutları için her
+seferinde şifre girmemek amacıyla bir `ControlMaster` soketi açık tutmak
+pratik oluyor:
 
 ```bash
 ssh -o ControlMaster=yes -o ControlPath=/tmp/nfc-cm.sock -o ControlPersist=8h botek@10.42.0.74
-# başka bir terminalde:
-rsync -az -e "ssh -o ControlPath=/tmp/nfc-cm.sock" ...
+# başka bir terminalde, aynı bağlantıyı paylaşarak:
+ssh -o ControlPath=/tmp/nfc-cm.sock botek@10.42.0.74 'systemctl --user status tost-kiosk-electron.service'
 ```
 
 ## Bilinen kısıtlar
@@ -286,6 +334,28 @@ rsync -az -e "ssh -o ControlPath=/tmp/nfc-cm.sock" ...
   dokunmama ilkesi) `file://` kökünden farklı bir HTTP köküne fetch/SSE atmanın
   pratik yolu bu; uygulama yalnızca kendi paketlenmiş arayüzünü yükler, dışarıdan
   içerik kabul etmez.
-- **`--no-sandbox`** — Electron'un Chromium sandbox'ı panelde setuid-root
-  yapılandırmasını gerektiriyor olabilir, doğrulanmadı; `--no-sandbox` ile
-  çalıştığı bilinen/test edilen durum. Kapalı bir kiosk için kabul edilebilir.
+- **Chromium sandbox — `.deb` kurulum yolu ASCII olmalı.** `.deb`'in kurduğu
+  dizin (`/opt/<productName>`) boşluk/Türkçe karakter içerirse (ör. eski
+  `Tost Sırası - Client`), Electron'un SUID `chrome-sandbox` yardımcı
+  programı bunu doğrulayamayıp SIGTRAP ile çöküyor. Bu yüzden `productName`
+  ASCII/boşluksuz (`TostKioskClient`) — kullanıcıya görünen isim
+  (uygulama menüsü, taskbar) ayrıca `linux.desktop.Name` ile
+  `"Tost Sırası - Client"` olarak ayarlanıyor.
+- **Taskbar/WM_CLASS eşleşmesi.** Electron'un `app.setName()` ile ayarladığı
+  değer, `.deb`'in ürettiği `.desktop` girdisindeki `StartupWMClass` ile
+  **birebir aynı** olmalı (`tost-kiosk-client`) — aksi halde masaüstü ortamı
+  çalışan pencereyi kurulu `.desktop` girdisiyle eşleştiremiyor ve
+  Electron'un güvenilmez ham X11 özelliklerine (boş `_NET_WM_ICON`, eski
+  Latin-1 `WM_NAME`) düşüyor; panelde bu, taskbar'da jenerik bir ikon ve
+  bozuk kodlanmış bir başlık ("Tost SÄ±rasÄ±") olarak görünüyordu.
+- **Panelde entegre GPU + GNOME erişilebilirlik köprüsü çakışması.**
+  Panelin GPU/compositor'ünde tekrarlayan `GetVSyncParametersIfAvailable`
+  uyarılarından sonra SIGTRAP ile çökme, ve GNOME oturumunun
+  `GTK_MODULES=gail:atk-bridge` ayarıyla çakışan bir GLib-GObject hatası
+  gözlendi — `tost-kiosk-electron.service` artık `--disable-gpu
+  --disable-software-rasterizer` bayraklarıyla ve `NO_AT_BRIDGE=1` ortam
+  değişkeniyle çalışıyor (panelde 8+ dakika kesintisiz çalışarak
+  doğrulandı). Bu makinede (geliştirme) bu bayraklara gerek görülmedi.
+- **Tek instance kilidi.** Electron uygulaması `app.requestSingleInstanceLock()`
+  kullanıyor — ikondan tekrar açılmaya çalışılırsa yeni bir pencere/süreç
+  açmak yerine mevcut pencereyi öne getirir.

@@ -11,7 +11,20 @@ Type=simple
 # kisa bir bekleme - health check GEREKLI DEGIL, TOST_BACKEND_URL yanlissa
 # uygulama zaten kendi uyari ekranini gosterir.
 ExecStartPre=/bin/sleep 3
-ExecStart=%h/tost-kiosk-electron/run.sh
+# GNOME oturumunun GTK_MODULES=gail:atk-bridge ayari Electron'daki GTK
+# kullanimiyla catisiyordu (GLib-GObject "no handler" hatasi) - bu
+# uygulama icin erisilebilirlik koprusunu kapatiyoruz.
+Environment=NO_AT_BRIDGE=1
+# .deb ile kurulan gercek uygulama (/usr/bin/tost-kiosk-client ->
+# update-alternatives ile /opt/TostKioskClient/tost-kiosk-client'a bagli).
+# Eskiden burada run.sh + elle indirilen AppImage calistiriliyordu; artik
+# tek dagitim yolu .deb (bkz. README "Client Mode masaustu paketi").
+# Backend adresi ~/.config/tost-kiosk-client/config.env'den okunuyor.
+# --disable-gpu: panelin GPU/compositor'unde tekrarlayan
+# "GetVSyncParametersIfAvailable failed" uyarilarindan sonra SIGTRAP ile
+# cokme gozlendi (mini PC entegre grafik + Wayland compositor uyumsuzlugu
+# ihtimali) - donanim hizlandirmayi bu uygulama icin kapatinca gecti.
+ExecStart=/usr/bin/tost-kiosk-client --disable-gpu --disable-software-rasterizer
 Restart=always
 RestartSec=3
 

@@ -24,6 +24,21 @@ const http = require("http");
 const { SerialPort } = require("serialport");
 const { parseFrames, em4100Core } = require("./serial-parser.cjs");
 
+// Tek instance kilidi: uygulama zaten calisirken ikondan/menuden tekrar
+// acilmaya calisilirsa (ozellikle kucultulmusken) YENI bir pencere/surec
+// ACILMASIN - ikinci surec hemen kendini kapatip mevcut pencereyi one
+// getirsin. Bu, en basta (BrowserWindow'dan ONCE) alinmali.
+const gotSingleInstanceLock = app.requestSingleInstanceLock();
+if (!gotSingleInstanceLock) {
+  app.quit();
+} else {
+  app.on("second-instance", () => {
+    if (!win) return;
+    if (win.isMinimized()) win.restore();
+    win.focus();
+  });
+}
+
 let win;
 const ICON_PATH = path.join(__dirname, "..", "dist", "icon.png");
 const appIcon = nativeImage.createFromPath(ICON_PATH);

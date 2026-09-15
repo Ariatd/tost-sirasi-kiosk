@@ -21,7 +21,7 @@ if [ -z "${TOST_BACKEND_URL:-}" ]; then
 fi
 export TOST_BACKEND_URL
 
-APPIMAGE="./TostKioskClient-2.0.6.AppImage"
+APPIMAGE="./TostKioskClient-2.0.7.AppImage"
 chmod +x "$APPIMAGE" 2>/dev/null
 
 # AppImage varsayılan olarak FUSE ile kendini bağlar; panelde libfuse2 kurulu

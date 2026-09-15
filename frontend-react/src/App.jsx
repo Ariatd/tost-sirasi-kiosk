@@ -9,7 +9,7 @@ import {
   candidatePositions,
   nearestOpenPosition,
 } from './logic.js';
-import { api, getUser, connectEvents } from './api.js';
+import { api, connectEvents } from './api.js';
 
 const CONFIRM_TIMEOUT_MS = 6000;
 
@@ -17,7 +17,6 @@ export default function App() {
   // ---- durum (mevcut vanilla app.js'teki S nesnesiyle birebir aynı alanlar) ----
   const [view, setView] = useState('idle');
   const [expanded, setExpanded] = useState(false);
-  const [devOpen, setDevOpen] = useState(false);
   const [pendingCard, setPendingCard] = useState(null); // {id, code}
   const [pendingUser, setPendingUser] = useState(null); // {first_name, last_name}
   const [lastTicket, setLastTicket] = useState(null);
@@ -27,7 +26,6 @@ export default function App() {
   const [clockSkew, setClockSkew] = useState(0);
   const [connected, setConnected] = useState(false);
   const [, setTick] = useState(0); // saniyede bir yeniden çiz (canlı sayaçlar için)
-  const [nativeReady, setNativeReady] = useState(!!window.tostNative);
 
   const confirmTimerRef = useRef(null);
   const now = () => Date.now() + clockSkew;
@@ -126,37 +124,6 @@ export default function App() {
     return () => clearInterval(id);
   }, []);
 
-  // native (Electron) köprüsü hazır olunca üst çubuk butonları belirsin
-  useEffect(() => {
-    if (window.tostNative) {
-      setNativeReady(true);
-      return;
-    }
-    const onReady = () => setNativeReady(true);
-    window.addEventListener('tostnativeready', onReady);
-    return () => window.removeEventListener('tostnativeready', onReady);
-  }, []);
-
-  // klavye kısayolları (Electron penceresi)
-  useEffect(() => {
-    function onKey(e) {
-      const n = window.tostNative;
-      if (!n) return;
-      if (e.key === 'F11') {
-        e.preventDefault();
-        n.toggleFullscreen();
-      } else if (e.ctrlKey && e.shiftKey && e.key.toLowerCase() === 'm') {
-        e.preventDefault();
-        n.minimize();
-      } else if (e.ctrlKey && e.shiftKey && e.key.toLowerCase() === 'q') {
-        e.preventDefault();
-        if (window.confirm('Kiosk uygulaması kapatılsın mı?')) n.quit();
-      }
-    }
-    window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
-  }, []);
-
   useEffect(() => {
     if (view !== 'confirm') return;
     confirmTimerRef.current = setTimeout(() => goHome(), CONFIRM_TIMEOUT_MS);
@@ -217,17 +184,6 @@ export default function App() {
     await api('/api/pickup', { ticket_id: ticketId });
   }
 
-  async function devScan(cardId) {
-    await api('/api/dev/scan', { card_id: cardId });
-  }
-  async function devAdvance(min) {
-    await api('/api/dev/advance', { minutes: min });
-  }
-  async function devReset() {
-    await api('/api/dev/reset');
-    goHome();
-  }
-
   // ---------------------------------------------------------------------
   // Görünüm
   // ---------------------------------------------------------------------
@@ -239,12 +195,6 @@ export default function App() {
     <div className="tq-root">
       <Topbar
         now={nowMs}
-        devOpen={devOpen}
-        setDevOpen={setDevOpen}
-        nativeReady={nativeReady}
-        devScan={devScan}
-        devAdvance={devAdvance}
-        devReset={devReset}
         connected={connected}
       />
 
@@ -295,62 +245,18 @@ export default function App() {
 // Alt bileşenler
 // =====================================================================
 
-function Topbar({ now, devOpen, setDevOpen, nativeReady, devScan, devAdvance, devReset, connected }) {
+function Topbar({ now, connected }) {
   return (
-    <>
-      <div className="tq-topbar">
-        <div className="tq-brand">
-          <span>🍞</span>
-          <span>TOST SIRASI</span>
-        </div>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-          {!connected && <span className="tq-offline-dot" title="Bağlantı yok" />}
-          <span className="tq-clock">{formatClock(now)}</span>
-          <button className="tq-dev-btn" onClick={() => setDevOpen((v) => !v)}>
-            test
-          </button>
-          {nativeReady && (
-            <>
-              <button className="tq-win-btn" title="Küçült (Ctrl+Shift+M)" onClick={() => window.tostNative?.minimize()}>
-                —
-              </button>
-              <button className="tq-win-btn" title="Kapat (Ctrl+Shift+Q)" onClick={() => {
-                if (window.confirm('Kiosk uygulaması kapatılsın mı?')) window.tostNative?.quit();
-              }}>
-                ✕
-              </button>
-            </>
-          )}
-        </div>
+    <div className="tq-topbar">
+      <div className="tq-brand">
+        <span>🍞</span>
+        <span>TOST SIRASI</span>
       </div>
-      {devOpen && (
-        <div className="tq-dev-panel">
-          <p>Test kontrolleri (gerçek sistemde yok)</p>
-          <div className="row">
-            <button className="tq-chip" onClick={() => devAdvance(5)}>+5 dk</button>
-            <button className="tq-chip" onClick={() => devAdvance(15)}>+15 dk</button>
-          </div>
-          <div className="row">
-            <button className="tq-chip" onClick={() => devAdvance(60)}>+60 dk</button>
-            <button className="tq-chip warn" onClick={devReset}>Sıfırla</button>
-          </div>
-          <p style={{ marginTop: 4 }}>Donanımsız kart testi</p>
-          <div className="row">
-            <button className="tq-chip" onClick={() => devScan('0040805A2D626F6B04')}>Kart A</button>
-            <button className="tq-chip" onClick={() => devScan('004080A1B2C3D4E508')}>Kart B</button>
-          </div>
-          {nativeReady && (
-            <>
-              <p style={{ marginTop: 4 }}>Pencere (F11 · Ctrl+Shift+M · Ctrl+Shift+Q)</p>
-              <div className="row">
-                <button className="tq-chip" onClick={() => window.tostNative?.minimize()}>Küçült</button>
-                <button className="tq-chip" onClick={() => window.tostNative?.toggleFullscreen()}>Tam ekran ⇄</button>
-              </div>
-            </>
-          )}
-        </div>
-      )}
-    </>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+        {!connected && <span className="tq-offline-dot" title="Bağlantı yok" />}
+        <span className="tq-clock">{formatClock(now)}</span>
+      </div>
+    </div>
   );
 }
 

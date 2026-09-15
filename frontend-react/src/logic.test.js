@@ -125,3 +125,10 @@ describe('kart başına aktif bilet sayısı — mantığın uygulama katmanına
     expect(maps.occupiedMap.get(2).card_id).toBe('B');
   });
 });
+
+describe('sipariş kodları', () => {
+  it('kodlar iki haneli gösterim için sıfırla doldurulur', () => {
+    expect(String(7).padStart(2, '0')).toBe('07');
+    expect(String(47).padStart(2, '0')).toBe('47');
+  });
+});

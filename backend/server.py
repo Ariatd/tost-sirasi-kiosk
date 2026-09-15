@@ -230,19 +230,19 @@ def em4100_core(payload: bytes) -> str:
 
 
 def make_code(card_id: str, em4100: str) -> str:
-    """Kartin gercek kimliginin ondalik son 2 hanesi. Su an aktif bir bilette
-    ayni kod varsa cakismayi onlemek icin 3, sonra 4 haneye cikar."""
+    """Kart kimliginden turetilen, her zaman iki haneli siparis kodu."""
     base_hex = em4100 or card_id
     try:
         n = int(base_hex, 16)
     except ValueError:
         n = abs(hash(base_hex))
     taken = {t["code"] for t in active_tickets()}
-    for digits in (2, 3, 4, 6):
-        code = str(n % (10 ** digits)).zfill(digits)
+    start = n % 100
+    for offset in range(100):
+        code = f"{(start + offset) % 100:02d}"
         if code not in taken:
             return code
-    return str(n % 1000000).zfill(6)
+    return f"{start:02d}"
 
 
 def emit_scan(card_id: str, em4100: str, raw_hex: str = ""):

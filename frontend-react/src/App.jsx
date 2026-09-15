@@ -205,9 +205,8 @@ export default function App() {
       setView('confirm');
     } else {
       const cardTickets = tickets.filter((t) => t.card_id === pendingCard.id);
-      if (cardTickets.length >= 4) {
-        setLastTicket({ ...cardTickets[0], active_count: cardTickets.length });
-        setView('blocked');
+      if (r.data.error === 'Bu kartla en fazla 4 aktif siparis verebilirsiniz' || cardTickets.length >= 4) {
+        window.alert('Bu kartla en fazla 4 aktif sipariş verebilirsiniz.');
       } else {
         window.alert(r.data.error || 'Sipariş oluşturulamadı');
       }

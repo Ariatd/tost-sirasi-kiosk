@@ -316,14 +316,7 @@ def validate_and_create_ticket(card_id, scheduled_time):
     if not get_user(card_id):
         return None, "Bu kart kayitli degil"
 
-    # 1) kart basina en fazla 4 aktif siparis
-    active_count = q1(
-        "SELECT COUNT(*) AS c FROM tickets WHERE card_id=? AND picked_up=0", (card_id,)
-    )["c"]
-    if active_count >= 4:
-        return None, "Bu kartla en fazla 4 aktif siparis verebilirsiniz"
-
-    # 2) gercek bir siparis asla 5 dk'dan az sonrasina olusturulamaz
+    # 1) gercek bir siparis asla 5 dk'dan az sonrasina olusturulamaz
     #    (istemci-server saat farki / ag gecikmesi icin ~20 sn tolerans)
     if scheduled_time - n < SLOT_MS - 20000:
         return None, "Secilen saat cok yakin"

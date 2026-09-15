@@ -39,20 +39,8 @@ export default function App() {
   // Sunucu bağlantısı
   // ---------------------------------------------------------------------
   const proceedToOrder = useCallback((card, activeTicketHint) => {
-    const { tickets: curTickets } = stateRef.current;
-    const cardTickets = curTickets.filter((t) => t.card_id === card.id);
-    const activeCount = Math.max(card.activeCount || 0, cardTickets.length);
-    const existing = cardTickets[0] ||
-      (activeTicketHint
-        ? { ...activeTicketHint, card_id: card.id, code: activeTicketHint.code || card.code }
-        : null);
-    if (activeCount >= 4) {
-      setLastTicket({ ...existing, active_count: activeCount });
-      setView('blocked');
-    } else {
-      setExpanded(false);
-      setView('select');
-    }
+    setExpanded(false);
+    setView('select');
   }, []);
 
   const handleScan = useCallback(
@@ -182,12 +170,7 @@ export default function App() {
       setLastTicket(r.data.ticket);
       setView('confirm');
     } else {
-      const cardTickets = tickets.filter((t) => t.card_id === pendingCard.id);
-      if (r.data.error === 'Bu kartla en fazla 4 aktif siparis verebilirsiniz' || cardTickets.length >= 4) {
-        window.alert('Bu kartla en fazla 4 aktif sipariş verebilirsiniz.');
-      } else {
-        window.alert(r.data.error || 'Sipariş oluşturulamadı');
-      }
+      window.alert(r.data.error || 'Sipariş oluşturulamadı');
     }
   }
 

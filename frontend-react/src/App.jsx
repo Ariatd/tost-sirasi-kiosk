@@ -185,7 +185,7 @@ export default function App() {
   }
 
   async function devReset() {
-    const r = await api('/api/dev/reset-all');
+    const r = await api('/api/dev/reset');
     if (r.ok) goHome();
     else window.alert(r.data.error || 'Test sıfırlanamadı');
   }

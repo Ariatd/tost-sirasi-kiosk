@@ -197,12 +197,14 @@ export default function App() {
   }
 
   async function devAdvance(min) {
-    await api('/api/dev/advance', { minutes: min });
+    const r = await api('/api/dev/advance', { minutes: min });
+    if (!r.ok) window.alert(r.data.error || 'Test zamanı ilerletilemedi');
   }
 
   async function devReset() {
-    await api('/api/dev/reset');
-    goHome();
+    const r = await api('/api/dev/reset');
+    if (r.ok) goHome();
+    else window.alert(r.data.error || 'Test sıfırlanamadı');
   }
 
   // ---------------------------------------------------------------------
@@ -339,7 +341,7 @@ function IdleView({ tickets, now, pickUp, startOrder, goRegisterForm }) {
                 title={ready ? 'Teslim edildi işaretlemek için dokun' : undefined}
               >
                 <div className="n">{t.code}</div>
-                {t.active_count > 1 && t.first_name && (
+                {t.first_name && (
                   <div className="s">{t.first_name} {t.last_name}</div>
                 )}
                 <div className={`s${preparing ? ' preparing' : ''}`}>{statusLabel}</div>

@@ -21,11 +21,16 @@ export const API_BASE = (
 ).replace(/\/+$/, '');
 
 export async function api(path, body) {
-  const res = await fetch(API_BASE + path, {
-    method: body ? 'POST' : 'GET',
-    headers: body ? { 'Content-Type': 'application/json' } : undefined,
-    body: body ? JSON.stringify(body) : undefined,
-  });
+  let res;
+  try {
+    res = await fetch(API_BASE + path, {
+      method: body ? 'POST' : 'GET',
+      headers: body ? { 'Content-Type': 'application/json' } : undefined,
+      body: body ? JSON.stringify(body) : undefined,
+    });
+  } catch (error) {
+    return { ok: false, status: 0, data: { error: `Backend bağlantısı kurulamadı: ${error.message}` } };
+  }
   let data = {};
   try {
     data = await res.json();

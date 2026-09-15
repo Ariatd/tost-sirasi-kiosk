@@ -112,10 +112,10 @@ describe('5 dk altına düşen önizleme "bloke" olur', () => {
   });
 });
 
-describe('tek kişi tek bilet — mantığın uygulama katmanına devri', () => {
+describe('kart başına aktif bilet sayısı — mantığın uygulama katmanına devri', () => {
   it('describePosition/computeMaps kart bazlı çakışma kontrolü yapmaz (bu App.jsx/proceedToOrder işi)', () => {
-    // logic.js kartlardan bağımsız, saf basamak hesaplayıcıdır; "aynı kart
-    // ikinci sipariş veremez" kuralı App.jsx (proceedToOrder) ve backend'de
+    // logic.js kartlardan bağımsız, saf basamak hesaplayıcıdır; kart başına
+    // maksimum 4 aktif sipariş kuralı App.jsx (proceedToOrder) ve backend'de
     // (validate_and_create_ticket) uygulanır. Burada sadece iki farklı
     // biletin basamaklarının birbirini etkilemediğini doğruluyoruz.
     const t1 = { id: 1, card_id: 'A', code: '11', scheduled_time: NOW + 5 * 60_000 };

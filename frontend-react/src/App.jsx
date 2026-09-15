@@ -41,13 +41,14 @@ export default function App() {
   // ---------------------------------------------------------------------
   const proceedToOrder = useCallback((card, activeTicketHint) => {
     const { tickets: curTickets } = stateRef.current;
-    const existing =
-      curTickets.find((t) => t.card_id === card.id) ||
+    const cardTickets = curTickets.filter((t) => t.card_id === card.id);
+    const activeCount = Math.max(card.activeCount || 0, cardTickets.length);
+    const existing = cardTickets[0] ||
       (activeTicketHint
         ? { ...activeTicketHint, card_id: card.id, code: activeTicketHint.code || card.code }
         : null);
-    if (existing) {
-      setLastTicket(existing);
+    if (activeCount >= 4) {
+      setLastTicket({ ...existing, active_count: activeCount });
       setView('blocked');
     } else {
       setExpanded(false);
@@ -57,7 +58,7 @@ export default function App() {
 
   const handleScan = useCallback(
     async (msg) => {
-      const card = { id: msg.card_id, code: msg.code_hint };
+      const card = { id: msg.card_id, code: msg.code_hint, activeCount: msg.active_count };
       const { view: curView } = stateRef.current;
 
       if (curView === 'registerScanning') {
@@ -203,9 +204,9 @@ export default function App() {
       setLastTicket(r.data.ticket);
       setView('confirm');
     } else {
-      const existing = tickets.find((t) => t.card_id === pendingCard.id);
-      if (existing) {
-        setLastTicket(existing);
+      const cardTickets = tickets.filter((t) => t.card_id === pendingCard.id);
+      if (cardTickets.length >= 4) {
+        setLastTicket({ ...cardTickets[0], active_count: cardTickets.length });
         setView('blocked');
       } else {
         window.alert(r.data.error || 'Sipariş oluşturulamadı');
@@ -377,6 +378,9 @@ function IdleView({ tickets, now, pickUp, startOrder, goRegisterForm }) {
                 title={ready ? 'Teslim edildi işaretlemek için dokun' : undefined}
               >
                 <div className="n">{t.code}</div>
+                {t.active_count > 1 && t.first_name && (
+                  <div className="s">{t.first_name} {t.last_name}</div>
+                )}
                 <div className={`s${preparing ? ' preparing' : ''}`}>{statusLabel}</div>
               </div>
             );
@@ -476,8 +480,13 @@ function BlockedView({ ticket, now, onHome, onPickup }) {
   const ready = ticket.scheduled_time - now <= 0;
   return (
     <div className="tq-center">
-      <div style={{ color: 'var(--text-muted)', fontSize: 14 }}>Zaten bir tostunuz var</div>
+      <div style={{ color: 'var(--text-muted)', fontSize: 14 }}>
+        {ticket.active_count >= 4 ? 'Bu kartla en fazla 4 aktif sipariş verilebilir' : 'Sipariş verilemedi'}
+      </div>
       <div className="tq-confirm-num">{ticket.code}</div>
+      {ticket.active_count >= 4 && ticket.first_name && (
+        <div style={{ color: 'var(--text-muted)', fontSize: 16 }}>{ticket.first_name} {ticket.last_name}</div>
+      )}
       <div className="tq-confirm-sub">
         {ready ? 'Hazır — yeni sipariş vermeden önce teslim alın.' : `${formatMinutes(ticket.scheduled_time - now)} sonra hazır olacak.`}
       </div>

@@ -177,8 +177,12 @@ def execute(sql, args=()):
 
 def active_tickets():
     rows = q(
-        "SELECT id, card_id, code, scheduled_time, picked_up "
-        "FROM tickets WHERE picked_up=0 ORDER BY scheduled_time ASC"
+        "SELECT t.id, t.card_id, t.code, t.scheduled_time, t.picked_up, "
+        "u.first_name, u.last_name, "
+        "(SELECT COUNT(*) FROM tickets same "
+        " WHERE same.card_id=t.card_id AND same.picked_up=0) AS active_count "
+        "FROM tickets t LEFT JOIN users u ON u.card_id=t.card_id "
+        "WHERE t.picked_up=0 ORDER BY t.scheduled_time ASC"
     )
     return [dict(r) for r in rows]
 
@@ -252,10 +256,14 @@ def emit_scan(card_id: str, em4100: str, raw_hex: str = ""):
 
     user = get_user(card_id)
     existing = q1(
-        "SELECT id, code, scheduled_time FROM tickets WHERE card_id=? AND picked_up=0 "
-        "ORDER BY scheduled_time ASC LIMIT 1",
+        "SELECT t.id, t.code, t.scheduled_time, u.first_name, u.last_name "
+        "FROM tickets t LEFT JOIN users u ON u.card_id=t.card_id "
+        "WHERE t.card_id=? AND t.picked_up=0 ORDER BY t.scheduled_time ASC LIMIT 1",
         (card_id,),
     )
+    active_count = q1(
+        "SELECT COUNT(*) AS c FROM tickets WHERE card_id=? AND picked_up=0", (card_id,)
+    )["c"]
     evt = {
         "type": "scan",
         "now": now_ms(),
@@ -263,11 +271,12 @@ def emit_scan(card_id: str, em4100: str, raw_hex: str = ""):
         "em4100": em4100,
         "code_hint": make_code(card_id, em4100),
         "user": user,
+        "active_count": active_count,
         "active_ticket": dict(existing) if existing else None,
     }
     log(f"kart okundu: {card_id} (em4100 {em4100})"
         + (f" · kayitli: {user['first_name']}" if user else "")
-        + (" · aktif bileti var" if existing else ""))
+        + (f" · {active_count} aktif bileti var" if active_count else ""))
     broadcast(evt)
 
 
@@ -307,9 +316,12 @@ def validate_and_create_ticket(card_id, scheduled_time):
     if not get_user(card_id):
         return None, "Bu kart kayitli degil"
 
-    # 1) zaten aktif bileti olan kart ikinci siparis veremez
-    if q1("SELECT 1 FROM tickets WHERE card_id=? AND picked_up=0", (card_id,)):
-        return None, "Zaten bir tostunuz var"
+    # 1) kart basina en fazla 4 aktif siparis
+    active_count = q1(
+        "SELECT COUNT(*) AS c FROM tickets WHERE card_id=? AND picked_up=0", (card_id,)
+    )["c"]
+    if active_count >= 4:
+        return None, "Bu kartla en fazla 4 aktif siparis verebilirsiniz"
 
     # 2) gercek bir siparis asla 5 dk'dan az sonrasina olusturulamaz
     #    (istemci-server saat farki / ag gecikmesi icin ~20 sn tolerans)

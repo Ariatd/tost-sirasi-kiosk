@@ -25,7 +25,7 @@ Environment=NO_AT_BRIDGE=1
 # cokme gozlendi (mini PC entegre grafik + Wayland compositor uyumsuzlugu
 # ihtimali) - donanim hizlandirmayi bu uygulama icin kapatinca gecti.
 ExecStart=/usr/bin/tost-kiosk-client --disable-gpu --disable-software-rasterizer
-Restart=on-failure
+Restart=no
 RestartSec=3
 
 [Install]

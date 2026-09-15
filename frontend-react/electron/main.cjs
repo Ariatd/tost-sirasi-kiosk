@@ -286,9 +286,9 @@ function createWindow() {
 
 async function boot() {
   console.log("[client-mode] backend adresi:", BACKEND_URL, " (config:", CONFIG_FILE, ")");
-  createWindow();
 
   if (!BACKEND_URL) {
+    createWindow();
     loadNoReaderScreen(
       "icon=" + encodeURIComponent("⚠️") +
       "&hideRetry=1" +
@@ -302,6 +302,7 @@ async function boot() {
   }
 
   await resetBackendState();
+  createWindow();
   const started = await tryStartReaderThenApp();
   if (!started) loadNoReaderScreen("");
 }

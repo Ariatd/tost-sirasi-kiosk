@@ -268,7 +268,6 @@ function Topbar({ now, nativeReady, connected }) {
         <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
           {!connected && <span className="tq-offline-dot" title="Bağlantı yok" />}
           <span className="tq-clock">{formatClock(now)}</span>
-          <button className="tq-dev-btn" type="button">test</button>
           {nativeReady && (
             <>
               <button className="tq-win-btn" title="Küçült (Ctrl+Shift+M)" onClick={() => window.tostNative?.minimize()}>

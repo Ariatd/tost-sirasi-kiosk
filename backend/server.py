@@ -559,6 +559,16 @@ class Handler(BaseHTTPRequestHandler):
             log("DEV: tum biletler ve okumalar silindi, zaman ofseti sifirlandi")
             return self._send_json({"ok": True})
 
+        if p == "/api/dev/reset-all":
+            with _offset_lock:
+                _time_offset_ms = 0
+            execute("DELETE FROM tickets")
+            execute("DELETE FROM card_reads")
+            execute("DELETE FROM users")
+            broadcast_state()
+            log("DEV: biletler, okumalar ve kayitli kartlar silindi, sistem sifirlandi")
+            return self._send_json({"ok": True})
+
         # ---- yonetim: tam sifirlama (token'li, agdan da cagrilabilir) ----
         if p == "/api/reset":
             if not self._admin_ok():

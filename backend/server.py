@@ -506,10 +506,6 @@ class Handler(BaseHTTPRequestHandler):
         p = u.path
         body = self._read_json()
 
-        # /api/dev/* yalnizca panelin kendisinden (localhost) calisir
-        if p.startswith("/api/dev/") and self.client_address[0] not in ("127.0.0.1", "::1"):
-            return self._send_json({"ok": False, "error": "dev uc noktalari sadece localhost"}, 403)
-
         if p == "/api/card-scan":
             # Panel PC (Client Mode) kendi okudugu/ayristirdigi karti bildirir.
             card_id = (body.get("card_id") or "").strip()

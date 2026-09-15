@@ -17,6 +17,7 @@ export default function App() {
   // ---- durum (mevcut vanilla app.js'teki S nesnesiyle birebir aynı alanlar) ----
   const [view, setView] = useState('idle');
   const [expanded, setExpanded] = useState(false);
+  const [devOpen, setDevOpen] = useState(false);
   const [pendingCard, setPendingCard] = useState(null); // {id, code}
   const [pendingUser, setPendingUser] = useState(null); // {first_name, last_name}
   const [lastTicket, setLastTicket] = useState(null);
@@ -26,6 +27,7 @@ export default function App() {
   const [clockSkew, setClockSkew] = useState(0);
   const [connected, setConnected] = useState(false);
   const [, setTick] = useState(0); // saniyede bir yeniden çiz (canlı sayaçlar için)
+  const [nativeReady, setNativeReady] = useState(!!window.tostNative);
 
   const confirmTimerRef = useRef(null);
   const now = () => Date.now() + clockSkew;
@@ -125,6 +127,16 @@ export default function App() {
   }, []);
 
   useEffect(() => {
+    if (window.tostNative) {
+      setNativeReady(true);
+      return;
+    }
+    const onReady = () => setNativeReady(true);
+    window.addEventListener('tostnativeready', onReady);
+    return () => window.removeEventListener('tostnativeready', onReady);
+  }, []);
+
+  useEffect(() => {
     if (view !== 'confirm') return;
     confirmTimerRef.current = setTimeout(() => goHome(), CONFIRM_TIMEOUT_MS);
     return () => clearTimeout(confirmTimerRef.current);
@@ -184,6 +196,15 @@ export default function App() {
     await api('/api/pickup', { ticket_id: ticketId });
   }
 
+  async function devAdvance(min) {
+    await api('/api/dev/advance', { minutes: min });
+  }
+
+  async function devReset() {
+    await api('/api/dev/reset');
+    goHome();
+  }
+
   // ---------------------------------------------------------------------
   // Görünüm
   // ---------------------------------------------------------------------
@@ -195,6 +216,11 @@ export default function App() {
     <div className="tq-root">
       <Topbar
         now={nowMs}
+        devOpen={devOpen}
+        setDevOpen={setDevOpen}
+        nativeReady={nativeReady}
+        devAdvance={devAdvance}
+        devReset={devReset}
         connected={connected}
       />
 
@@ -245,18 +271,48 @@ export default function App() {
 // Alt bileşenler
 // =====================================================================
 
-function Topbar({ now, connected }) {
+function Topbar({ now, devOpen, setDevOpen, nativeReady, devAdvance, devReset, connected }) {
   return (
-    <div className="tq-topbar">
-      <div className="tq-brand">
-        <span>🍞</span>
-        <span>TOST SIRASI</span>
+    <>
+      <div className="tq-topbar">
+        <div className="tq-brand">
+          <span>🍞</span>
+          <span>TOST SIRASI</span>
+        </div>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+          {!connected && <span className="tq-offline-dot" title="Bağlantı yok" />}
+          <span className="tq-clock">{formatClock(now)}</span>
+          <button className="tq-dev-btn" onClick={() => setDevOpen((v) => !v)}>
+            test
+          </button>
+          {nativeReady && (
+            <>
+              <button className="tq-win-btn" title="Küçült (Ctrl+Shift+M)" onClick={() => window.tostNative?.minimize()}>
+                —
+              </button>
+              <button className="tq-win-btn" title="Kapat (Ctrl+Shift+Q)" onClick={() => {
+                if (window.confirm('Kiosk uygulaması kapatılsın mı?')) window.tostNative?.quit();
+              }}>
+                ✕
+              </button>
+            </>
+          )}
+        </div>
       </div>
-      <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-        {!connected && <span className="tq-offline-dot" title="Bağlantı yok" />}
-        <span className="tq-clock">{formatClock(now)}</span>
-      </div>
-    </div>
+      {devOpen && (
+        <div className="tq-dev-panel">
+          <p>Test kontrolleri (gerçek sistemde yok)</p>
+          <div className="row">
+            <button className="tq-chip" onClick={() => devAdvance(5)}>+5 dk</button>
+            <button className="tq-chip" onClick={() => devAdvance(15)}>+15 dk</button>
+          </div>
+          <div className="row">
+            <button className="tq-chip" onClick={() => devAdvance(60)}>+60 dk</button>
+            <button className="tq-chip warn" onClick={devReset}>Sıfırla</button>
+          </div>
+        </div>
+      )}
+    </>
   );
 }
 

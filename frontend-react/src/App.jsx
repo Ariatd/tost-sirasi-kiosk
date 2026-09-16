@@ -22,6 +22,7 @@ export default function App() {
   const [pendingUser, setPendingUser] = useState(null); // {first_name, last_name}
   const [lastTicket, setLastTicket] = useState(null);
   const [profile, setProfile] = useState(null);
+  const [deletionRequestSent, setDeletionRequestSent] = useState(false);
   const [registerFirst, setRegisterFirst] = useState('');
   const [registerLast, setRegisterLast] = useState('');
   const [tickets, setTickets] = useState([]);
@@ -78,6 +79,7 @@ export default function App() {
         const r = await api(`/api/profile?card_id=${encodeURIComponent(card.id)}`);
         if (r.ok && r.data.ok) {
           setProfile(r.data.profile);
+          setDeletionRequestSent(false);
           setView('profile');
         } else {
           setProfile(null);
@@ -195,7 +197,18 @@ export default function App() {
 
   function startProfileScan() {
     setProfile(null);
+    setDeletionRequestSent(false);
     setView('profileScanning');
+  }
+
+  async function requestAccountDeletion() {
+    if (!profile || deletionRequestSent) return;
+    const r = await api('/api/account-deletion-request', { card_id: profile.card_id });
+    if (r.ok && r.data.ok) {
+      setDeletionRequestSent(true);
+    } else {
+      window.alert(r.data.error || 'Yöneticiye istek gönderilemedi');
+    }
   }
 
   function submitRegister(e) {
@@ -308,7 +321,15 @@ export default function App() {
       {view === 'profileScanning' && (
         <ScanningView text="Profilinizi açmak için kartınızı okutun…" onCancel={openSettings} />
       )}
-      {view === 'profile' && profile && <ProfileView profile={profile} onHome={goHome} onBack={openSettings} />}
+      {view === 'profile' && profile && (
+        <ProfileView
+          profile={profile}
+          deletionRequestSent={deletionRequestSent}
+          onRequestDeletion={requestAccountDeletion}
+          onHome={goHome}
+          onBack={openSettings}
+        />
+      )}
       {view === 'profileMissing' && <ProfileMissingView onBack={openSettings} />}
     </div>
   );
@@ -421,7 +442,7 @@ function SettingsView({ brightness, setBrightness, nativeReady, connected, onPro
   );
 }
 
-function ProfileView({ profile, onHome, onBack }) {
+function ProfileView({ profile, deletionRequestSent, onRequestDeletion, onHome, onBack }) {
   const joined = profile.created_at ? new Date(profile.created_at).toLocaleDateString('tr-TR') : '—';
   return (
     <div className="tq-main tq-profile-page">
@@ -446,6 +467,9 @@ function ProfileView({ profile, onHome, onBack }) {
         <strong>Kayıt yönetimi</strong>
         <span>Kayıt silme, yanlışlıkla veya yetkisiz silinmeyi önlemek için yalnızca yönetici aracı üzerinden yapılır.</span>
       </div>
+      <button className="tq-confirm-btn" onClick={onRequestDeletion} disabled={deletionRequestSent}>
+        {deletionRequestSent ? 'Yöneticiye istek gönderildi' : 'Yöneticiye kayıt silme isteği gönder'}
+      </button>
       <button className="tq-confirm-btn" onClick={onHome}>Ana Sayfa</button>
     </div>
   );

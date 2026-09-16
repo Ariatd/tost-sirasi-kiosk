@@ -142,6 +142,14 @@ def db_init():
             em4100   TEXT,
             raw_hex  TEXT NOT NULL
         );
+        CREATE TABLE IF NOT EXISTS account_deletion_requests (
+            id         INTEGER PRIMARY KEY AUTOINCREMENT,
+            card_id    TEXT NOT NULL,
+            created_at TEXT NOT NULL,
+            status     TEXT NOT NULL DEFAULT 'pending'
+        );
+        CREATE INDEX IF NOT EXISTS ix_account_deletion_requests_status
+            ON account_deletion_requests(status, created_at);
         """
     )
     _conn.commit()
@@ -505,6 +513,15 @@ class Handler(BaseHTTPRequestHandler):
                 "SELECT id, ts, card_id, em4100, raw_hex FROM card_reads "
                 "ORDER BY id DESC LIMIT 300")]})
 
+        if p == "/api/account-deletion-requests":
+            if not self._admin_ok():
+                return
+            return self._send_json({"requests": [dict(r) for r in q(
+                "SELECT r.id, r.card_id, r.created_at, r.status, "
+                "u.first_name, u.last_name "
+                "FROM account_deletion_requests r LEFT JOIN users u ON u.card_id=r.card_id "
+                "ORDER BY r.created_at DESC")]})
+
         if p == "/admin":
             self.path = "/admin.html"
             return self._serve_static("/admin.html")
@@ -520,6 +537,11 @@ class Handler(BaseHTTPRequestHandler):
                     "FROM tickets ORDER BY id DESC")],
                 "card_reads": [dict(r) for r in q(
                     "SELECT id, ts, card_id, em4100, raw_hex FROM card_reads ORDER BY id DESC LIMIT 200")],
+                "account_deletion_requests": [dict(r) for r in q(
+                    "SELECT r.id, r.card_id, r.created_at, r.status, "
+                    "u.first_name, u.last_name "
+                    "FROM account_deletion_requests r LEFT JOIN users u ON u.card_id=r.card_id "
+                    "ORDER BY r.created_at DESC")],
                 "counts": {
                     "users": q1("SELECT COUNT(*) c FROM users")["c"],
                     "tickets": q1("SELECT COUNT(*) c FROM tickets")["c"],
@@ -563,6 +585,24 @@ class Handler(BaseHTTPRequestHandler):
             if err:
                 return self._send_json({"ok": False, "error": err}, 400)
             return self._send_json({"ok": True, "user": user})
+
+        if p == "/api/account-deletion-request":
+            card_id = (body.get("card_id") or "").strip().upper()
+            if not card_id or not get_user(card_id):
+                return self._send_json({"ok": False, "error": "Kayıtlı kullanıcı bulunamadı"}, 404)
+            pending = q1(
+                "SELECT id FROM account_deletion_requests "
+                "WHERE card_id=? AND status='pending' ORDER BY id DESC LIMIT 1",
+                (card_id,),
+            )
+            if pending:
+                return self._send_json({"ok": True, "already_requested": True})
+            execute(
+                "INSERT INTO account_deletion_requests(card_id, created_at, status) VALUES (?,?,?)",
+                (card_id, datetime.now().isoformat(timespec="seconds"), "pending"),
+            )
+            log(f"hesap kapatma istegi: {card_id}")
+            return self._send_json({"ok": True, "already_requested": False})
 
         if p == "/api/pickup":
             tid = body.get("ticket_id")

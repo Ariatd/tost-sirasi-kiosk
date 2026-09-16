@@ -137,6 +137,12 @@ class AdminApp:
              ("created", "Kayıt tarihi", 150), ("del", "", 70)],
             self.on_click_users)
 
+        self.t_requests = self._make_table(
+            nb, "Hesap Kapatma Talepleri",
+            [("id", "No", 60), ("card", "Kart ID", 200), ("name", "Kullanıcı", 220),
+             ("created", "Talep tarihi", 170), ("status", "Durum", 100)],
+            lambda event: None)
+
         self.refresh()
         self._auto_tick()
 
@@ -194,23 +200,29 @@ class AdminApp:
         def fetch():
             ok1, tickets = api("GET", "/api/tickets")
             ok2, users = api("GET", "/api/users")
-            return (ok1, tickets, ok2, users)
+            ok3, requests = api("GET", "/api/account-deletion-requests")
+            return (ok1, tickets, ok2, users, ok3, requests)
 
         self._run(fetch, self._apply_refresh)
 
     def _apply_refresh(self, res):
-        ok1, tickets, ok2, users = res
+        ok1, tickets, ok2, users, ok3, requests = res
         if not ok1:
             self.set_status(tickets if isinstance(tickets, str) else "bilet alınamadı", error=True)
             return
         if not ok2:
             self.set_status(users if isinstance(users, str) else "kullanıcı alınamadı", error=True)
             return
+        if not ok3:
+            self.set_status(requests if isinstance(requests, str) else "talepler alınamadı", error=True)
+            return
 
         self._fill_tickets(tickets.get("tickets", []))
         self._fill_users(users.get("users", []))
+        self._fill_requests(requests.get("requests", []))
         self.set_status(f"güncel · {datetime.now():%H:%M:%S} · "
-                        f"{len(tickets.get('tickets', []))} bilet, {len(users.get('users', []))} kullanıcı")
+                        f"{len(tickets.get('tickets', []))} bilet, {len(users.get('users', []))} kullanıcı, "
+                        f"{len(requests.get('requests', []))} talep")
 
     def _fill_tickets(self, rows):
         tv = self.t_tickets
@@ -238,6 +250,16 @@ class AdminApp:
             if iid in sel:
                 tv.selection_add(iid)
 
+    def _fill_requests(self, rows):
+        tv = self.t_requests
+        tv.delete(*tv.get_children())
+        for request in rows:
+            name = f"{request.get('first_name', '')} {request.get('last_name', '')}".strip() or "(kayıt yok)"
+            tv.insert("", "end", iid=f"r{request['id']}", values=(
+                request["id"], request.get("card_id", ""), name,
+                (request.get("created_at") or "").replace("T", " "), request.get("status", ""),
+            ))
+
     # ---- satıra tıklama (Sil sütunu) ----
     def on_click_tickets(self, event):
         tv = self.t_tickets
@@ -264,7 +286,7 @@ class AdminApp:
             s = self.t_tickets.selection()
             if s:
                 self._delete_ticket(s[0][1:])
-        else:
+        elif title == "Kayıtlı Kullanıcılar":
             s = self.t_users.selection()
             if s:
                 self._delete_user(s[0][1:])

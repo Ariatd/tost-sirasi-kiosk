@@ -312,8 +312,11 @@ async function devAdvance(min) {
   await api("/api/dev/advance", { minutes: min });
 }
 async function devReset() {
-  await api("/api/dev/reset");
-  goHome();
+  // /api/dev/reset is POST-only. api() would otherwise use GET for an
+  // argument-less call and receive a 404 from the backend.
+  const r = await api("/api/dev/reset", {});
+  if (r.ok) goHome();
+  else showToast(r.data.error || "Test sıfırlanamadı");
 }
 
 function clearConfirmTimer() {

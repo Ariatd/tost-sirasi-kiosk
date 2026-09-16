@@ -185,8 +185,14 @@ export default function App() {
   }
 
   async function devReset() {
-    const r = await api('/api/dev/reset');
-    if (r.ok) goHome();
+    // api() only uses POST when it receives a body. This endpoint is
+    // intentionally POST-only, so send an empty JSON object rather than
+    // accidentally issuing GET /api/dev/reset (which the backend rejects).
+    const r = await api('/api/dev/reset', {});
+    if (r.ok) {
+      setTickets([]);
+      goHome();
+    }
     else window.alert(r.data.error || 'Test sıfırlanamadı');
   }
 

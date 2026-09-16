@@ -21,6 +21,7 @@ export default function App() {
   const [pendingCard, setPendingCard] = useState(null); // {id, code}
   const [pendingUser, setPendingUser] = useState(null); // {first_name, last_name}
   const [lastTicket, setLastTicket] = useState(null);
+  const [profile, setProfile] = useState(null);
   const [registerFirst, setRegisterFirst] = useState('');
   const [registerLast, setRegisterLast] = useState('');
   const [tickets, setTickets] = useState([]);
@@ -28,6 +29,13 @@ export default function App() {
   const [connected, setConnected] = useState(false);
   const [, setTick] = useState(0); // saniyede bir yeniden çiz (canlı sayaçlar için)
   const [nativeReady, setNativeReady] = useState(!!window.tostNative);
+  const [brightness, setBrightness] = useState(() => {
+    try {
+      return Number(localStorage.getItem('tost-kiosk-brightness')) || 100;
+    } catch (_) {
+      return 100;
+    }
+  });
 
   const confirmTimerRef = useRef(null);
   const now = () => Date.now() + clockSkew;
@@ -62,6 +70,18 @@ export default function App() {
           setView('registerSuccess');
         } else {
           setView('registerForm');
+        }
+        return;
+      }
+
+      if (curView === 'profileScanning') {
+        const r = await api(`/api/profile?card_id=${encodeURIComponent(card.id)}`);
+        if (r.ok && r.data.ok) {
+          setProfile(r.data.profile);
+          setView('profile');
+        } else {
+          setProfile(null);
+          setView('profileMissing');
         }
         return;
       }
@@ -131,6 +151,14 @@ export default function App() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [view]);
 
+  useEffect(() => {
+    try {
+      localStorage.setItem('tost-kiosk-brightness', String(brightness));
+    } catch (_) {
+      // Yerel depolama kullanılamıyorsa ayar yalnızca bu oturumda geçerli olur.
+    }
+  }, [brightness]);
+
   // ---------------------------------------------------------------------
   // Eylemler
   // ---------------------------------------------------------------------
@@ -141,6 +169,7 @@ export default function App() {
     setPendingCard(null);
     setPendingUser(null);
     setLastTicket(null);
+    setProfile(null);
     setRegisterFirst('');
     setRegisterLast('');
   }
@@ -156,6 +185,17 @@ export default function App() {
     setRegisterFirst('');
     setRegisterLast('');
     setView('registerForm');
+  }
+
+  function openSettings() {
+    clearTimeout(confirmTimerRef.current);
+    setProfile(null);
+    setView('settings');
+  }
+
+  function startProfileScan() {
+    setProfile(null);
+    setView('profileScanning');
   }
 
   function submitRegister(e) {
@@ -204,7 +244,7 @@ export default function App() {
   const sortedTickets = [...tickets].sort((a, b) => a.scheduled_time - b.scheduled_time);
 
   return (
-    <div className="tq-root">
+    <div className="tq-root" style={{ filter: `brightness(${brightness}%)` }}>
       <Topbar
         now={nowMs}
         devOpen={devOpen}
@@ -213,6 +253,7 @@ export default function App() {
         devReset={devReset}
         nativeReady={nativeReady}
         connected={connected}
+        onSettings={openSettings}
       />
 
       {view === 'idle' && (
@@ -254,6 +295,21 @@ export default function App() {
           onHome={goHome}
         />
       )}
+      {view === 'settings' && (
+        <SettingsView
+          brightness={brightness}
+          setBrightness={setBrightness}
+          nativeReady={nativeReady}
+          connected={connected}
+          onProfile={startProfileScan}
+          onHome={goHome}
+        />
+      )}
+      {view === 'profileScanning' && (
+        <ScanningView text="Profilinizi açmak için kartınızı okutun…" onCancel={openSettings} />
+      )}
+      {view === 'profile' && profile && <ProfileView profile={profile} onHome={goHome} onBack={openSettings} />}
+      {view === 'profileMissing' && <ProfileMissingView onBack={openSettings} />}
     </div>
   );
 }
@@ -262,7 +318,7 @@ export default function App() {
 // Alt bileşenler
 // =====================================================================
 
-function Topbar({ now, devOpen, setDevOpen, devAdvance, devReset, nativeReady, connected }) {
+function Topbar({ now, devOpen, setDevOpen, devAdvance, devReset, nativeReady, connected, onSettings }) {
   return (
     <>
       <div className="tq-topbar">
@@ -274,6 +330,7 @@ function Topbar({ now, devOpen, setDevOpen, devAdvance, devReset, nativeReady, c
           {!connected && <span className="tq-offline-dot" title="Bağlantı yok" />}
           <span className="tq-clock">{formatClock(now)}</span>
           <button className="tq-dev-btn" onClick={() => setDevOpen((v) => !v)}>test</button>
+          <button className="tq-settings-btn" title="Ayarlar" aria-label="Ayarlar" onClick={onSettings}>⚙</button>
           {nativeReady && (
             <>
               <button className="tq-win-btn" title="Küçült (Ctrl+Shift+M)" onClick={() => window.tostNative?.minimize()}>
@@ -297,6 +354,111 @@ function Topbar({ now, devOpen, setDevOpen, devAdvance, devReset, nativeReady, c
         </div>
       )}
     </>
+  );
+}
+
+function SettingsView({ brightness, setBrightness, nativeReady, connected, onProfile, onHome }) {
+  const [readerMessage, setReaderMessage] = useState('');
+
+  async function retryReader() {
+    if (!window.tostNative?.retryReaderScan) return;
+    setReaderMessage('Kart okuyucu taranıyor…');
+    try {
+      const found = await window.tostNative.retryReaderScan();
+      if (!found) setReaderMessage('Okuyucu bulunamadı. USB bağlantısını kontrol edin.');
+    } catch (_) {
+      setReaderMessage('Okuyucu yeniden başlatılamadı.');
+    }
+  }
+
+  return (
+    <div className="tq-main tq-settings-page">
+      <button className="tq-back" onClick={onHome}>← Ana Sayfa</button>
+      <div className="tq-settings-header">
+        <div className="tq-settings-icon">⚙</div>
+        <div>
+          <div className="tq-select-title">Ayarlar</div>
+          <div className="tq-confirm-sub">Cihaz ve profil seçenekleri</div>
+        </div>
+      </div>
+
+      <div className="tq-settings-grid">
+        <section className="tq-settings-card">
+          <div className="tq-settings-card-title">Genel Ayarlar</div>
+          <label className="tq-range-label" htmlFor="tq-brightness">
+            <span>Uygulama parlaklığı</span><strong>{brightness}%</strong>
+          </label>
+          <input id="tq-brightness" className="tq-range" type="range" min="50" max="120" step="5"
+            value={brightness} onChange={(e) => setBrightness(Number(e.target.value))} />
+          <p className="tq-settings-note">Bu ayar kiosk uygulamasının görüntüsünü değiştirir; fiziksel panel ışığı cihaz ayarlarından yönetilir.</p>
+
+          <div className="tq-settings-row">
+            <div><strong>Backend bağlantısı</strong><span>{connected ? 'Bağlı' : 'Bağlantı bekleniyor'}</span></div>
+            <span className={`tq-status-pill${connected ? ' ok' : ''}`}>{connected ? 'Çevrimiçi' : 'Çevrimdışı'}</span>
+          </div>
+          <div className="tq-settings-row">
+            <div><strong>Sistem güncellemesi</strong><span>Yeni sürümler GitHub Release üzerinden yönetilir.</span></div>
+          </div>
+        </section>
+
+        <section className="tq-settings-card">
+          <div className="tq-settings-card-title">Donanım ve bakım</div>
+          <div className="tq-settings-row stack">
+            <div><strong>Kart okuyucu</strong><span>CH340 USB-seri okuyucuyu yeniden tara.</span></div>
+            <button className="tq-confirm-btn" disabled={!nativeReady} onClick={retryReader}>Okuyucuyu yeniden tara</button>
+          </div>
+          {readerMessage && <p className="tq-settings-note">{readerMessage}</p>}
+          <p className="tq-settings-note">Fiziksel onarım ve işletim sistemi paket güncellemeleri yetkili bakım işlemleridir; kiosk içinden otomatik uygulanmaz.</p>
+        </section>
+
+        <section className="tq-settings-card profile-card">
+          <div className="tq-settings-card-title">Profil Ayarları</div>
+          <p className="tq-settings-note">Sipariş istatistiklerinizi görmek için kartınızı okutun.</p>
+          <button className="tq-scan-btn" onClick={onProfile}><span>💳</span> Kartımı okut</button>
+        </section>
+      </div>
+    </div>
+  );
+}
+
+function ProfileView({ profile, onHome, onBack }) {
+  const joined = profile.created_at ? new Date(profile.created_at).toLocaleDateString('tr-TR') : '—';
+  return (
+    <div className="tq-main tq-profile-page">
+      <button className="tq-back" onClick={onBack}>← Ayarlara dön</button>
+      <div className="tq-profile-hero">
+        <div className="tq-profile-avatar">{profile.first_name?.slice(0, 1)?.toUpperCase() || 'K'}</div>
+        <div>
+          <div className="tq-select-title">{profile.first_name} {profile.last_name}</div>
+          <div className="tq-confirm-sub">Üyelik başlangıcı: {joined}</div>
+        </div>
+      </div>
+      <div className="tq-profile-stats">
+        <div><strong>{profile.total_orders}</strong><span>Toplam sipariş</span></div>
+        <div><strong>{profile.completed_orders}</strong><span>Teslim alınan</span></div>
+        <div><strong>{profile.active_orders}</strong><span>Aktif sipariş</span></div>
+      </div>
+      <div className="tq-profile-info">
+        <strong>Bakiye</strong>
+        <span>Bakiye sistemi henüz etkin değil.</span>
+      </div>
+      <div className="tq-profile-info">
+        <strong>Kayıt yönetimi</strong>
+        <span>Kayıt silme, yanlışlıkla veya yetkisiz silinmeyi önlemek için yalnızca yönetici aracı üzerinden yapılır.</span>
+      </div>
+      <button className="tq-confirm-btn" onClick={onHome}>Ana Sayfa</button>
+    </div>
+  );
+}
+
+function ProfileMissingView({ onBack }) {
+  return (
+    <div className="tq-center">
+      <div className="tq-scanning-icon">💳</div>
+      <div style={{ fontSize: 20, fontWeight: 600 }}>Bu kart için profil bulunamadı</div>
+      <div className="tq-confirm-sub">Önce kayıt olmanız gerekiyor.</div>
+      <button className="tq-confirm-btn" onClick={onBack}>Ayarlara dön</button>
+    </div>
   );
 }
 

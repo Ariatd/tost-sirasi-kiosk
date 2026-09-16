@@ -192,6 +192,35 @@ def get_user(card_id):
     return dict(r) if r else None
 
 
+def get_profile(card_id):
+    """Kart okutulduktan sonra gösterilecek sınırlı profil özeti.
+
+    Projede bakiye/cüzdan verisi tutulmadığından, sahte bir tutar dönmek
+    yerine bunu açıkça `balance_enabled: False` ile belirtir. İstatistikler
+    doğrudan tickets tablosundan hesaplanır.
+    """
+    user = q1(
+        "SELECT card_id, first_name, last_name, created_at FROM users WHERE card_id=?",
+        (card_id,),
+    )
+    if not user:
+        return None
+    stats = q1(
+        "SELECT COUNT(*) AS total_orders, "
+        "SUM(CASE WHEN picked_up=1 THEN 1 ELSE 0 END) AS completed_orders, "
+        "SUM(CASE WHEN picked_up=0 THEN 1 ELSE 0 END) AS active_orders "
+        "FROM tickets WHERE card_id=?",
+        (card_id,),
+    )
+    return {
+        **dict(user),
+        "total_orders": stats["total_orders"] or 0,
+        "completed_orders": stats["completed_orders"] or 0,
+        "active_orders": stats["active_orders"] or 0,
+        "balance_enabled": False,
+    }
+
+
 def state_payload():
     return {
         "type": "state",
@@ -442,6 +471,14 @@ class Handler(BaseHTTPRequestHandler):
             qs = parse_qs(u.query)
             cid = (qs.get("card_id") or [""])[0]
             return self._send_json({"user": get_user(cid)})
+
+        if p == "/api/profile":
+            qs = parse_qs(u.query)
+            cid = (qs.get("card_id") or [""])[0].strip().upper()
+            profile = get_profile(cid)
+            if not profile:
+                return self._send_json({"ok": False, "error": "Bu kart için profil bulunamadı"}, 404)
+            return self._send_json({"ok": True, "profile": profile})
 
         if p == "/api/health":
             return self._send_json({"ok": True, "now": now_ms()})

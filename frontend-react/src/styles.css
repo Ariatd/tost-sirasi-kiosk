@@ -158,6 +158,24 @@ body {
   gap: 14px;
   align-content: start;
 }
+.tq-ready-section { margin-top: 22px; }
+.tq-ready-separator {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 0 0 14px;
+  color: var(--text-muted);
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+.tq-ready-separator::before,
+.tq-ready-separator::after {
+  content: '';
+  height: 1px;
+  background: var(--line);
+  flex: 1;
+}
 .tq-tile {
   background: var(--surface);
   border: 1px solid var(--line);

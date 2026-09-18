@@ -487,6 +487,30 @@ function ProfileMissingView({ onBack }) {
 }
 
 function IdleView({ tickets, now, pickUp, startOrder, goRegisterForm }) {
+  const waitingTickets = tickets.filter((ticket) => ticket.scheduled_time - now > 0);
+  const readyTickets = tickets.filter((ticket) => ticket.scheduled_time - now <= 0);
+
+  function renderTicket(ticket) {
+    const remaining = ticket.scheduled_time - now;
+    const ready = remaining <= 0;
+    const preparing = !ready && remaining < 60000;
+    const statusLabel = ready ? 'HAZIR' : preparing ? 'Hazırlanıyor' : `${formatMinutes(remaining)} kaldı`;
+    return (
+      <div
+        key={ticket.id}
+        className={`tq-tile${ready ? ' ready' : ''}`}
+        onClick={ready ? () => pickUp(ticket.id) : undefined}
+        title={ready ? 'Teslim edildi işaretlemek için dokun' : undefined}
+      >
+        <div className="n">{ticket.code}</div>
+        {ticket.first_name && (
+          <div className="s">{ticket.first_name} {ticket.last_name}</div>
+        )}
+        <div className={`s${preparing ? ' preparing' : ''}`}>{statusLabel}</div>
+      </div>
+    );
+  }
+
   return (
     <div className="tq-main">
       {tickets.length === 0 ? (
@@ -495,28 +519,15 @@ function IdleView({ tickets, now, pickUp, startOrder, goRegisterForm }) {
           <div>İlk tostu almak için kart okutabilirsiniz.</div>
         </div>
       ) : (
-        <div className="tq-grid">
-          {tickets.map((t) => {
-            const remaining = t.scheduled_time - now;
-            const ready = remaining <= 0;
-            const preparing = !ready && remaining < 60000;
-            const statusLabel = ready ? 'HAZIR' : preparing ? 'Hazırlanıyor' : `${formatMinutes(remaining)} kaldı`;
-            return (
-              <div
-                key={t.id}
-                className={`tq-tile${ready ? ' ready' : ''}`}
-                onClick={ready ? () => pickUp(t.id) : undefined}
-                title={ready ? 'Teslim edildi işaretlemek için dokun' : undefined}
-              >
-                <div className="n">{t.code}</div>
-                {t.first_name && (
-                  <div className="s">{t.first_name} {t.last_name}</div>
-                )}
-                <div className={`s${preparing ? ' preparing' : ''}`}>{statusLabel}</div>
-              </div>
-            );
-          })}
-        </div>
+        <>
+          {waitingTickets.length > 0 && <div className="tq-grid">{waitingTickets.map(renderTicket)}</div>}
+          {readyTickets.length > 0 && (
+            <section className="tq-ready-section">
+              <div className="tq-ready-separator"><span>Hazır Olanlar</span></div>
+              <div className="tq-grid">{readyTickets.map(renderTicket)}</div>
+            </section>
+          )}
+        </>
       )}
       <div className="tq-scan-cta">
         <div className="tq-home-btns">

@@ -112,6 +112,70 @@ describe('5 dk altına düşen önizleme "bloke" olur', () => {
   });
 });
 
+describe('Math.ceil ile slot geçişlerinde anında kayma', () => {
+  // Tek bilet: tam 35 dk sonrasına planlanmış (pozisyon 7)
+  const ticket = { id: 10, card_id: 'TEST', code: 'TS', scheduled_time: NOW + 7 * SLOT_MS }; // 35 minutes
+
+  it('31:00 anında, etiketler doğru ve bilet hala 7. pozisyonda', () => {
+    // `now` öyle bir an ki, biletin scheduled_time'ından geriye 31 dakika kalmış.
+    const nowAt31MinRemaining = ticket.scheduled_time - 31 * 60_000;
+    const maps = computeMaps([ticket], nowAt31MinRemaining);
+
+    // Ticket should still be at position 7 (Math.ceil(31min / 5min) = Math.ceil(6.2) = 7)
+    expect(maps.occupiedMap.get(7)?.code).toBe('TS');
+    expect(maps.occupiedMap.has(6)).toBe(false);
+
+    // Label for occupied slot (pos 7): Remaining 31 minutes -> '31 dk'
+    expect(describePosition(7, nowAt31MinRemaining, maps).label).toBe('31 dk');
+
+    // Label for preview slot (pos 6): targetTime = scheduled_time - 5min. Remaining = (scheduled_time - 5min) - nowAt31MinRemaining
+    // = (scheduled_time - nowAt31MinRemaining) - 5min = 31min - 5min = 26min
+    expect(describePosition(6, nowAt31MinRemaining, maps).label).toBe('26 dk');
+
+    // Label for an empty slot (pos 5): bucketLabel(5) -> '25 dk'
+    expect(describePosition(5, nowAt31MinRemaining, maps).label).toBe('25 dk');
+  });
+
+  it('30:59 anında (1 saniye sonra), etiketler doğru ve bilet hala 7. pozisyonda', () => {
+    const nowAt31MinRemaining = ticket.scheduled_time - 31 * 60_000;
+    const nowAt30Min59SecRemaining = nowAt31MinRemaining + 1000; // 1 second later
+    const maps = computeMaps([ticket], nowAt30Min59SecRemaining);
+
+    // Ticket should still be at position 7 (Math.ceil(30min 59sec / 5min) = Math.ceil(6.19...) = 7)
+    expect(maps.occupiedMap.get(7)?.code).toBe('TS');
+    expect(maps.occupiedMap.has(6)).toBe(false);
+
+    // Label for occupied slot (pos 7): Remaining 30min 59sec -> Math.ceil(30.98) -> '31 dk'
+    expect(describePosition(7, nowAt30Min59SecRemaining, maps).label).toBe('31 dk');
+
+    // Label for preview slot (pos 6): Remaining 25min 59sec -> Math.ceil(25.98) -> '26 dk'
+    expect(describePosition(6, nowAt30Min59SecRemaining, maps).label).toBe('26 dk');
+
+    // Label for an empty slot (pos 5): bucketLabel(5) -> '25 dk'
+    expect(describePosition(5, nowAt30Min59SecRemaining, maps).label).toBe('25 dk');
+  });
+
+  it('Tam 30:00 anında, bilet 6. pozisyona kayar ve etiketler doğru', () => {
+    // `now` öyle bir an ki, biletin scheduled_time'ından geriye tam 30 dakika kalmış.
+    const nowAt30MinRemaining = ticket.scheduled_time - 30 * 60_000;
+    const maps = computeMaps([ticket], nowAt30MinRemaining);
+
+    // Ticket should now be at position 6 (Math.ceil(30min / 5min) = Math.ceil(6) = 6)
+    expect(maps.occupiedMap.has(7)).toBe(false);
+    expect(maps.occupiedMap.get(6)?.code).toBe('TS');
+
+    // Label for occupied slot (pos 6): Remaining 30 minutes -> '30 dk'
+    expect(describePosition(6, nowAt30MinRemaining, maps).label).toBe('30 dk');
+
+    // Label for preview slot (pos 5): targetTime = scheduled_time - 5min. Remaining = (scheduled_time - 5min) - nowAt30MinRemaining
+    // = (scheduled_time - nowAt30MinRemaining) - 5min = 30min - 5min = 25min
+    expect(describePosition(5, nowAt30MinRemaining, maps).label).toBe('25 dk');
+
+    // Label for an empty slot (pos 7): bucketLabel(7) -> '35 dk'
+    expect(describePosition(7, nowAt30MinRemaining, maps).label).toBe('35 dk');
+  });
+});
+
 describe('kart başına aktif bilet sayısı — mantığın uygulama katmanına devri', () => {
   it('describePosition/computeMaps kart bazlı çakışma kontrolü yapmaz (bu App.jsx/proceedToOrder işi)', () => {
     // logic.js kartlardan bağımsız, saf basamak hesaplayıcıdır; kart başına

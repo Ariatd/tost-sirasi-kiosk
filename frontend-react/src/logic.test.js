@@ -80,6 +80,42 @@ describe('dolu basamak + senkron önizleme (bir önceki basamak)', () => {
     expect(d7.taken).toBe(true);
     expect(d7.subLabel).toBe('Dolu · 42');
   });
+
+  it('31 dk → 30:00 sınırında anında sola kayar; 30 dk eski yuvada bekletilmez', () => {
+    const at3100 = NOW + (8 * SLOT_MS - 31 * 60_000);
+    const maps31 = computeMaps([ticket], at3100);
+    expect(maps31.occupiedMap.get(7)?.code).toBe('42');
+    expect(maps31.occupiedMap.has(6)).toBe(false);
+    expect(describePosition(5, at3100, maps31).label).toBe('25 dk');
+    expect(describePosition(6, at3100, maps31).label).toBe('26 dk');
+    expect(describePosition(7, at3100, maps31).label).toBe('31 dk');
+
+    // 30:59: hâlâ üst yuva, etiket 31 (30 eski yuvada yok) — sol boş basamak 25 ile çakışmaz
+    const at3059 = at3100 + 1000;
+    const maps3059 = computeMaps([ticket], at3059);
+    expect(maps3059.occupiedMap.get(7)?.code).toBe('42');
+    expect(maps3059.occupiedMap.has(6)).toBe(false);
+    expect(describePosition(5, at3059, maps3059).label).toBe('25 dk');
+    expect(describePosition(6, at3059, maps3059).label).toBe('26 dk');
+    expect(describePosition(7, at3059, maps3059).label).toBe('31 dk');
+
+    const at3000 = NOW + (8 * SLOT_MS - 30 * 60_000);
+    const maps3000 = computeMaps([ticket], at3000);
+    expect(maps3000.occupiedMap.get(6)?.code).toBe('42');
+    expect(maps3000.occupiedMap.has(7)).toBe(false);
+    expect(describePosition(5, at3000, maps3000).label).toBe('25 dk');
+    expect(describePosition(6, at3000, maps3000).label).toBe('30 dk');
+    expect(describePosition(7, at3000, maps3000).label).toBe('35 dk');
+    const labels3000 = [5, 6, 7].map((p) => describePosition(p, at3000, maps3000).label);
+    expect(new Set(labels3000).size).toBe(3);
+
+    const at2959 = at3000 + 1000;
+    const maps2959 = computeMaps([ticket], at2959);
+    expect(maps2959.occupiedMap.get(6)?.code).toBe('42');
+    expect(describePosition(5, at2959, maps2959).label).toBe('24 dk');
+    expect(describePosition(6, at2959, maps2959).label).toBe('29 dk');
+    expect(describePosition(7, at2959, maps2959).label).toBe('35 dk');
+  });
 });
 
 describe('5 dk altına düşen önizleme "bloke" olur', () => {

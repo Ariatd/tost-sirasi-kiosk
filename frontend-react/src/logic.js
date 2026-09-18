@@ -7,8 +7,27 @@ export const SLOT_MS = SLOT_MINUTES * 60 * 1000;
 export const HORIZON_POSITIONS = 24; // "başka saat seç" penceresi (2 saat)
 
 export function formatMinutes(ms) {
-  const totalMinutes = Math.round(ms / 60000);
+  const totalMinutes = Math.floor(ms / 60000);
   if (totalMinutes <= 0) return 'şimdi';
+  if (totalMinutes < 60) return `${totalMinutes} dk`;
+  const hours = Math.floor(totalMinutes / 60);
+  const mins = totalMinutes % 60;
+  return mins === 0 ? `${hours} saat` : `${hours} saat ${mins} dk`;
+}
+
+// Tam 5 dk sınırında (ör. 30:00.000) bir alt yuvaya geçer.
+// 30:00.001 hâlâ üst yuva — kayma gecikmesin diye ms/SLOT_MS tam bölünmede ceil=N.
+export function slotPosition(remainingMs) {
+  if (remainingMs <= 0) return 0;
+  return Math.ceil(remainingMs / SLOT_MS);
+}
+
+function formatMinutesInSlot(ms, pos) {
+  const floorMin = Math.floor(ms / 60000);
+  if (floorMin <= 0) return 'şimdi';
+  // Üst yuvada 30:59…30:01 "31 dk" kalsın; "30 dk" eski yuvada 1 dk görünmesin.
+  const minInSlot = (pos - 1) * SLOT_MINUTES + 1;
+  const totalMinutes = Math.max(floorMin, minInSlot);
   if (totalMinutes < 60) return `${totalMinutes} dk`;
   const hours = Math.floor(totalMinutes / 60);
   const mins = totalMinutes % 60;
@@ -33,7 +52,7 @@ export function computeMaps(activeTickets, now) {
   for (const t of activeTickets) {
     const remaining = t.scheduled_time - now;
     if (remaining > 0) {
-      const pos = Math.ceil(remaining / SLOT_MS);
+      const pos = slotPosition(remaining);
       if (pos >= 1) occupiedMap.set(pos, t);
     }
   }
@@ -42,7 +61,7 @@ export function computeMaps(activeTickets, now) {
   for (const t of activeTickets) {
     const remaining = t.scheduled_time - now;
     if (remaining > 0) {
-      const pos = Math.ceil(remaining / SLOT_MS);
+      const pos = slotPosition(remaining);
       const prevPos = pos - 1;
       if (prevPos >= 1 && !occupiedMap.has(prevPos)) {
         previewMap.set(prevPos, { targetTime: t.scheduled_time - SLOT_MS, sourceTicket: t });
@@ -57,7 +76,7 @@ export function describePosition(p, now, maps) {
   if (occ) {
     return {
       taken: true,
-      label: formatMinutes(occ.scheduled_time - now),
+      label: formatMinutesInSlot(occ.scheduled_time - now, p),
       subLabel: `Dolu · ${occ.code}`,
       time: null,
     };
@@ -66,9 +85,9 @@ export function describePosition(p, now, maps) {
   if (prev) {
     const remaining = prev.targetTime - now;
     if (remaining < SLOT_MS) {
-      return { taken: true, blocked: true, label: formatMinutes(remaining), subLabel: 'Çok yakın', time: null };
+      return { taken: true, blocked: true, label: formatMinutesInSlot(remaining, p), subLabel: 'Çok yakın', time: null };
     }
-    return { taken: false, label: formatMinutes(remaining), time: prev.targetTime };
+    return { taken: false, label: formatMinutesInSlot(remaining, p), time: prev.targetTime };
   }
   return { taken: false, label: bucketLabel(p), pos: p };
 }

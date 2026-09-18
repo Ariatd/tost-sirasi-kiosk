@@ -15,10 +15,10 @@ export function formatMinutes(ms) {
   return mins === 0 ? `${hours} saat` : `${hours} saat ${mins} dk`;
 }
 
-// Tam 5 dk sınırında (ör. 30:00.000) bir alt yuvaya geçer.
-// 30:00.001 hâlâ üst yuva — kayma gecikmesin diye ms/SLOT_MS tam bölünmede ceil=N.
 export function slotPosition(remainingMs) {
   if (remainingMs <= 0) return 0;
+  // Tam 5 dk sınırında (ör. 30:00.000) bir alt yuvaya geçer.
+  // 30:00.001 hâlâ üst yuva — kayma gecikmesin diye ms/SLOT_MS tam bölünmede ceil=N.
   return Math.ceil(remainingMs / SLOT_MS);
 }
 
@@ -61,6 +61,7 @@ export function computeMaps(activeTickets, now) {
 }
 
 export function describePosition(p, now, maps) {
+  const occ = maps.occupiedMap.get(p);
   const occ = maps.occupiedMap.get(p);
   if (occ) {
     return {

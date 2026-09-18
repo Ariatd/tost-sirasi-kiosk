@@ -7,7 +7,7 @@ export const SLOT_MS = SLOT_MINUTES * 60 * 1000;
 export const HORIZON_POSITIONS = 24; // "başka saat seç" penceresi (2 saat)
 
 export function formatMinutes(ms) {
-  const totalMinutes = Math.round(ms / 60000);
+  const totalMinutes = Math.ceil(ms / 60000);
   if (totalMinutes <= 0) return 'şimdi';
   if (totalMinutes < 60) return `${totalMinutes} dk`;
   const hours = Math.floor(totalMinutes / 60);

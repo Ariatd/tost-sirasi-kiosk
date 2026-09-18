@@ -1,7 +1,7 @@
 {
   "name": "tost-kiosk-client",
   "private": true,
-  "version": "2.1.10",
+  "version": "2.1.11",
   "description": "Tost Sırası — Client Mode: panel PC'de çalışan Electron istemcisi, kart okuyucuyu (serialport) yerelde okur, uzak backend'e (TOST_BACKEND_URL) bildirir",
   "author": "Aria Tabiezad <ariatd99@gmail.com>",
   "homepage": "https://github.com/Ariatd/tost-sirasi-kiosk",

@@ -22,17 +22,6 @@ export function slotPosition(remainingMs) {
   return Math.ceil(remainingMs / SLOT_MS);
 }
 
-function formatMinutesInSlot(ms, pos) {
-  const floorMin = Math.floor(ms / 60000);
-  if (floorMin <= 0) return 'şimdi';
-  // Üst yuvada 30:59…30:01 "31 dk" kalsın; "30 dk" eski yuvada 1 dk görünmesin.
-  const minInSlot = (pos - 1) * SLOT_MINUTES + 1;
-  const totalMinutes = Math.max(floorMin, minInSlot);
-  if (totalMinutes < 60) return `${totalMinutes} dk`;
-  const hours = Math.floor(totalMinutes / 60);
-  const mins = totalMinutes % 60;
-  return mins === 0 ? `${hours} saat` : `${hours} saat ${mins} dk`;
-}
 
 export function bucketLabel(position) {
   const totalMinutes = position * SLOT_MINUTES;
@@ -76,7 +65,7 @@ export function describePosition(p, now, maps) {
   if (occ) {
     return {
       taken: true,
-      label: formatMinutesInSlot(occ.scheduled_time - now, p),
+      label: formatMinutes(occ.scheduled_time - now),
       subLabel: `Dolu · ${occ.code}`,
       time: null,
     };
@@ -85,9 +74,9 @@ export function describePosition(p, now, maps) {
   if (prev) {
     const remaining = prev.targetTime - now;
     if (remaining < SLOT_MS) {
-      return { taken: true, blocked: true, label: formatMinutesInSlot(remaining, p), subLabel: 'Çok yakın', time: null };
+      return { taken: true, blocked: true, label: formatMinutes(remaining), subLabel: 'Çok yakın', time: null };
     }
-    return { taken: false, label: formatMinutesInSlot(remaining, p), time: prev.targetTime };
+    return { taken: false, label: formatMinutes(remaining), time: prev.targetTime };
   }
   return { taken: false, label: bucketLabel(p), pos: p };
 }

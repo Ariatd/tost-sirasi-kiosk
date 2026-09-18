@@ -87,17 +87,17 @@ describe('dolu basamak + senkron önizleme (bir önceki basamak)', () => {
     expect(maps31.occupiedMap.get(7)?.code).toBe('42');
     expect(maps31.occupiedMap.has(6)).toBe(false);
     expect(describePosition(5, at3100, maps31).label).toBe('25 dk');
-    expect(describePosition(6, at3100, maps31).label).toBe('26 dk');
-    expect(describePosition(7, at3100, maps31).label).toBe('31 dk');
+    expect(describePosition(6, at3100, maps31).label).toBe('21 dk'); // label for preview slot at pos 6, with remaining 21 minutes
+    expect(describePosition(7, at3100, maps31).label).toBe('31 dk'); // label for occupied slot at pos 7, with remaining 31 minutes
 
-    // 30:59: hâlâ üst yuva, etiket 31 (30 eski yuvada yok) — sol boş basamak 25 ile çakışmaz
-    const at3059 = at3100 + 1000;
+    // 30:59: hâlâ üst yuvada (pozisyon 7), ancak etiketler kalan süreyi yansıtır
+    const at3059 = at3100 + 1000; // 1 second later
     const maps3059 = computeMaps([ticket], at3059);
-    expect(maps3059.occupiedMap.get(7)?.code).toBe('42');
-    expect(maps3059.occupiedMap.has(6)).toBe(false);
-    expect(describePosition(5, at3059, maps3059).label).toBe('25 dk');
-    expect(describePosition(6, at3059, maps3059).label).toBe('26 dk');
-    expect(describePosition(7, at3059, maps3059).label).toBe('31 dk');
+    expect(maps3059.occupiedMap.get(7)?.code).toBe('42'); // Ticket is still in pos 7
+    expect(maps3059.occupiedMap.has(6)).toBe(false); // Pos 6 is still empty
+    expect(describePosition(5, at3059, maps3059).label).toBe('25 dk'); // Empty slot, uses bucketLabel
+    expect(describePosition(6, at3059, maps3059).label).toBe('20 dk'); // label for preview slot at pos 6, with remaining 20 minutes 59 seconds (floor 20)
+    expect(describePosition(7, at3059, maps3059).label).toBe('30 dk'); // label for occupied slot at pos 7, with remaining 30 minutes 59 seconds (floor 30)
 
     const at3000 = NOW + (8 * SLOT_MS - 30 * 60_000);
     const maps3000 = computeMaps([ticket], at3000);

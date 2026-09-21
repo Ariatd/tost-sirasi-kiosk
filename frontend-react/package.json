@@ -1,7 +1,7 @@
 {
   "name": "tost-kiosk-client",
   "private": true,
-  "version": "2.2.11",
+  "version": "2.2.12",
   "description": "Tost Sırası — Client Mode: panel PC'de çalışan Electron istemcisi, kart okuyucuyu (serialport) yerelde okur, uzak backend'e (TOST_BACKEND_URL) bildirir",
   "author": "Aria Tabiezad <ariatd99@gmail.com>",
   "homepage": "https://github.com/Ariatd/tost-sirasi-kiosk",
@@ -19,16 +19,17 @@
     "electron:pack:dir": "electron-builder --linux dir --x64"
   },
   "dependencies": {
+    "qrcode.react": "^4.2.0",
     "react": "18.3.1",
     "react-dom": "18.3.1",
     "serialport": "12.0.0"
   },
   "devDependencies": {
     "@vitejs/plugin-react": "4.3.1",
-    "vite": "5.4.8",
-    "vitest": "2.1.9",
     "electron": "31.3.1",
-    "electron-builder": "24.13.3"
+    "electron-builder": "24.13.3",
+    "vite": "5.4.8",
+    "vitest": "2.1.9"
   },
   "build": {
     "appId": "com.tostkiosk.client",
@@ -50,9 +51,24 @@
     ],
     "linux": {
       "target": [
-        { "target": "AppImage", "arch": ["x64"] },
-        { "target": "deb", "arch": ["x64"] },
-        { "target": "dir", "arch": ["x64"] }
+        {
+          "target": "AppImage",
+          "arch": [
+            "x64"
+          ]
+        },
+        {
+          "target": "deb",
+          "arch": [
+            "x64"
+          ]
+        },
+        {
+          "target": "dir",
+          "arch": [
+            "x64"
+          ]
+        }
       ],
       "category": "Utility",
       "icon": "build-resources/icons",

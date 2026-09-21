@@ -1,4 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { QRCodeSVG } from 'qrcode.react';
+import MobileTrackView from './MobileTrackView.jsx';
 import {
   SLOT_MS,
   formatMinutes,
@@ -11,15 +13,23 @@ import {
 } from './logic.js';
 import { api, connectEvents } from './api.js';
 
-const CONFIRM_TIMEOUT_MS = 6000;
+const CONFIRM_TIMEOUT_MS = 12000; // QR kod okutulabilsin diye süreyi 12 saniyeye çıkardık
+const TUNNEL_PUBLIC_URL = 'https://remains-cooperative-mobiles-design.trycloudflare.com';
 
 export default function App() {
+  // URL parametresi kontrolü (?track=A12 ise doğrudan mobil takip ekranını aç)
+  const urlParams = new URLSearchParams(window.location.search);
+  const trackCode = urlParams.get('track');
+  if (trackCode) {
+    return <MobileTrackView ticketCode={trackCode} />;
+  }
+
   // ---- durum (mevcut vanilla app.js'teki S nesnesiyle birebir aynı alanlar) ----
   const [view, setView] = useState('idle');
   const [expanded, setExpanded] = useState(false);
   const [devOpen, setDevOpen] = useState(false);
-  const [pendingCard, setPendingCard] = useState(null); // {id, code}
-  const [pendingUser, setPendingUser] = useState(null); // {first_name, last_name}
+  const [pendingCard, setPendingCard] = useState(null);
+  const [pendingUser, setPendingUser] = useState(null);
   const [orderSelection, setOrderSelection] = useState(null);
   const [lastTicket, setLastTicket] = useState(null);
   const [profile, setProfile] = useState(null);
@@ -29,7 +39,7 @@ export default function App() {
   const [tickets, setTickets] = useState([]);
   const [clockSkew, setClockSkew] = useState(0);
   const [connected, setConnected] = useState(false);
-  const [, setTick] = useState(0); // saniyede bir yeniden çiz (canlı sayaçlar için)
+  const [, setTick] = useState(0);
   const [nativeReady, setNativeReady] = useState(!!window.tostNative);
   const [brightness, setBrightness] = useState(() => {
     try {
@@ -42,13 +52,9 @@ export default function App() {
   const confirmTimerRef = useRef(null);
   const now = () => Date.now() + clockSkew;
 
-  // her zaman güncel değerleri SSE callback'inden okuyabilmek için ref aynası
   const stateRef = useRef({});
   stateRef.current = { view, tickets, pendingCard, pendingUser };
 
-  // ---------------------------------------------------------------------
-  // Sunucu bağlantısı
-  // ---------------------------------------------------------------------
   const proceedToOrder = useCallback((card, activeTicketHint) => {
     setExpanded(false);
     setOrderSelection(null);
@@ -90,9 +96,6 @@ export default function App() {
         return;
       }
 
-      // Yalnızca "Kartınızı okuyucuya okutun…" ekranındayken (curView==='scanning')
-      // gelen okumayı işle. Başka her ekranda (idle dahil) kart rastgele
-      // okutulursa yok say — "Sipariş Ver"e basılmadan sipariş akışı başlamasın.
       if (curView === 'scanning') {
         clearTimeout(confirmTimerRef.current);
         setPendingCard(card);
@@ -118,7 +121,7 @@ export default function App() {
         handleScan(msg);
       },
     });
-    // ilk durumu SSE gecikmesine karşı hemen çek
+
     api('/api/state').then((r) => {
       if (r.ok) {
         setClockSkew(r.data.now - Date.now());
@@ -128,11 +131,9 @@ export default function App() {
     return disconnect;
   }, [handleScan]);
 
-  // registerFirst/registerLast'i de ref aynasına koy (handleScan içinde kullanılıyor)
   stateRef.current.pendingFirst = registerFirst;
   stateRef.current.pendingLast = registerLast;
 
-  // saniyelik tik — canlı geri sayımlar için
   useEffect(() => {
     const id = setInterval(() => setTick((t) => t + 1), 1000);
     return () => clearInterval(id);
@@ -152,20 +153,14 @@ export default function App() {
     if (view !== 'confirm') return;
     confirmTimerRef.current = setTimeout(() => goHome(), CONFIRM_TIMEOUT_MS);
     return () => clearTimeout(confirmTimerRef.current);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [view]);
 
   useEffect(() => {
     try {
       localStorage.setItem('tost-kiosk-brightness', String(brightness));
-    } catch (_) {
-      // Yerel depolama kullanılamıyorsa ayar yalnızca bu oturumda geçerli olur.
-    }
+    } catch (_) {}
   }, [brightness]);
 
-  // ---------------------------------------------------------------------
-  // Eylemler
-  // ---------------------------------------------------------------------
   function goHome() {
     clearTimeout(confirmTimerRef.current);
     setView('idle');
@@ -247,20 +242,15 @@ export default function App() {
   }
 
   async function devReset() {
-    // api() only uses POST when it receives a body. This endpoint is
-    // intentionally POST-only, so send an empty JSON object rather than
-    // accidentally issuing GET /api/dev/reset (which the backend rejects).
     const r = await api('/api/dev/reset', {});
     if (r.ok) {
       setTickets([]);
       goHome();
+    } else {
+      window.alert(r.data.error || 'Test sıfırlanamadı');
     }
-    else window.alert(r.data.error || 'Test sıfırlanamadı');
   }
 
-  // ---------------------------------------------------------------------
-  // Görünüm
-  // ---------------------------------------------------------------------
   const nowMs = now();
   const currentUser = pendingUser;
   const sortedTickets = [...tickets].sort((a, b) => a.scheduled_time - b.scheduled_time);
@@ -847,14 +837,37 @@ function SelectView({ now, tickets, user, expanded, setExpanded, orderSelection,
 }
 
 function ConfirmView({ ticket, now, onHome }) {
+  const trackUrl = `${TUNNEL_PUBLIC_URL}/?track=${encodeURIComponent(ticket.code)}`;
+
   return (
-    <div className="tq-center">
-      <div style={{ color: 'var(--text-muted)', fontSize: 14 }}>Kodunuz</div>
-      <div className="tq-confirm-num">{ticket.code}</div>
-      <div className="tq-confirm-sub">
+    <div className="tq-center" style={{ maxWidth: 460, margin: '0 auto', gap: 14 }}>
+      <div style={{ color: 'var(--text-muted)', fontSize: 15 }}>Sipariş Kodunuz</div>
+      <div className="tq-confirm-num" style={{ fontSize: 54, fontWeight: 900, letterSpacing: 2 }}>{ticket.code}</div>
+      <div className="tq-confirm-sub" style={{ fontSize: 17, marginTop: -4 }}>
         {formatMinutes(ticket.scheduled_time - now)} sonra hazır olacak · {formatClock(ticket.scheduled_time)}
       </div>
-      <button className="tq-confirm-btn" onClick={onHome}>Tamam</button>
+
+      {/* Mobilden Canlı Takip QR Bölümü */}
+      <div style={{
+        background: '#ffffff',
+        padding: 16,
+        borderRadius: 20,
+        boxShadow: '0 8px 24px rgba(0,0,0,0.2)',
+        display: 'flex',
+        flexDirection: 'column',
+        alignItems: 'center',
+        gap: 8,
+        marginTop: 6
+      }}>
+        <QRCodeSVG value={trackUrl} size={150} level="M" />
+        <span style={{ color: '#0f172a', fontSize: 13, fontWeight: 700 }}>
+          📱 Telefondan canlı takip etmek için okutun
+        </span>
+      </div>
+
+      <button className="tq-confirm-btn" onClick={onHome} style={{ minWidth: 200, marginTop: 10 }}>
+        Tamam
+      </button>
     </div>
   );
 }

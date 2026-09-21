@@ -14,7 +14,7 @@ import {
 import { api, connectEvents } from './api.js';
 
 const CONFIRM_TIMEOUT_MS = 12000; // QR kod okutulabilsin diye süreyi 12 saniyeye çıkardık
-const TUNNEL_PUBLIC_URL = 'https://remains-cooperative-mobiles-design.trycloudflare.com';
+const TUNNEL_PUBLIC_URL = 'https://traditional-respectively-std-subjects.trycloudflare.com';
 
 export default function App() {
   // URL parametresi kontrolü (?track=A12 ise doğrudan mobil takip ekranını aç)

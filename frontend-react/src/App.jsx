@@ -17,13 +17,12 @@ const CONFIRM_TIMEOUT_MS = 12000; // QR kod okutulabilsin diye süreyi 12 saniye
 const TUNNEL_PUBLIC_URL = 'https://traditional-respectively-std-subjects.trycloudflare.com';
 
 export default function App() {
-  // URL parametresi kontrolü (?track=A12 ise doğrudan mobil takip ekranını aç)
   const urlParams = new URLSearchParams(window.location.search);
   const trackCode = urlParams.get('track');
+  const trackUntil = urlParams.get('until');
   if (trackCode) {
-    return <MobileTrackView ticketCode={trackCode} />;
+    return <MobileTrackView ticketCode={trackCode} targetTime={trackUntil ? Number(trackUntil) : null} />;
   }
-
   // ---- durum (mevcut vanilla app.js'teki S nesnesiyle birebir aynı alanlar) ----
   const [view, setView] = useState('idle');
   const [expanded, setExpanded] = useState(false);
@@ -837,13 +836,14 @@ function SelectView({ now, tickets, user, expanded, setExpanded, orderSelection,
 }
 
 function ConfirmView({ ticket, now, onHome }) {
-  const trackUrl = `${TUNNEL_PUBLIC_URL}/?track=${encodeURIComponent(ticket.code)}`;
+
+  const trackUrl = `${TUNNEL_PUBLIC_URL}/?track=${encodeURIComponent(ticket.code)}&until=${ticket.scheduled_time}`;
 
   return (
-    <div className="tq-center" style={{ maxWidth: 460, margin: '0 auto', gap: 14 }}>
-      <div style={{ color: 'var(--text-muted)', fontSize: 15 }}>Sipariş Kodunuz</div>
-      <div className="tq-confirm-num" style={{ fontSize: 54, fontWeight: 900, letterSpacing: 2 }}>{ticket.code}</div>
-      <div className="tq-confirm-sub" style={{ fontSize: 17, marginTop: -4 }}>
+    <div className="tq-center">
+      <div style={{ color: 'var(--text-muted)', fontSize: 14 }}>Kodunuz</div>
+      <div className="tq-confirm-num">{ticket.code}</div>
+      <div className="tq-confirm-sub">
         {formatMinutes(ticket.scheduled_time - now)} sonra hazır olacak · {formatClock(ticket.scheduled_time)}
       </div>
 

@@ -594,47 +594,202 @@ function ToastMenuView({ onContinue, onHome }) {
   }
 
   return (
-    <div className="tq-main tq-menu-page">
-      <button className="tq-back" onClick={onHome}>← Vazgeç</button>
-      <div className="tq-menu-header">
-        <div className="tq-select-title">Tost Menüsü</div>
-        <div className="tq-confirm-sub">Önce tostunuzu seçin, sonra hazırlık zamanını belirleyin.</div>
+    <div className="tq-main tq-menu-page" style={{ maxWidth: 960, margin: '0 auto', width: '100%' }}>
+      <button className="tq-back" onClick={onHome} style={{ alignSelf: 'flex-start', marginBottom: 12 }}>← Vazgeç</button>
+      
+      <div className="tq-menu-header" style={{ marginBottom: 18 }}>
+        <div className="tq-select-title" style={{ fontSize: 28, fontWeight: 700, marginBottom: 4 }}>Tost Menüsü</div>
+        <div className="tq-confirm-sub" style={{ fontSize: 16 }}>Önce tostunuzu seçin, sonra hazırlık zamanını belirleyin.</div>
       </div>
-      <section className="tq-menu-section">
-        <div className="tq-menu-section-title">Standart</div>
-        <div className="tq-choice-grid">
+
+      <section className="tq-menu-section" style={{
+        background: 'rgba(255, 255, 255, 0.05)',
+        border: '1px solid rgba(255, 255, 255, 0.12)',
+        borderRadius: 16,
+        padding: 20,
+        marginBottom: 20
+      }}>
+        <div className="tq-menu-section-title" style={{ fontSize: 18, fontWeight: 600, marginBottom: 14 }}>Standart Seçenekler</div>
+        <div className="tq-choice-grid" style={{
+          display: 'grid',
+          gridTemplateColumns: 'repeat(auto-fill, minmax(170px, 1fr))',
+          gap: 14
+        }}>
           {STANDARD_TOASTS.map((item) => (
-            <button key={item} className={`tq-choice${mode === 'standard' && standard === item ? ' selected' : ''}`} onClick={() => { setMode('standard'); setStandard(item); }}>
+            <button
+              key={item}
+              style={{
+                minHeight: 80,
+                fontSize: 17,
+                fontWeight: 600,
+                borderRadius: 14,
+                padding: '12px 14px',
+                cursor: 'pointer',
+                border: mode === 'standard' && standard === item ? '2px solid #3b82f6' : '1px solid rgba(255,255,255,0.18)',
+                background: mode === 'standard' && standard === item ? '#2563eb' : 'rgba(255,255,255,0.08)',
+                color: '#fff',
+                boxShadow: mode === 'standard' && standard === item ? '0 0 16px rgba(37,99,235,0.4)' : 'none',
+                transition: 'all 0.12s ease',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                textAlign: 'center'
+              }}
+              onClick={() => { setMode('standard'); setStandard(item); }}
+            >
               {item}
             </button>
           ))}
-          <button className={`tq-choice custom${mode === 'custom' ? ' selected' : ''}`} onClick={() => setMode('custom')}>+ Kendin Belirle</button>
+          <button
+            style={{
+              minHeight: 80,
+              fontSize: 18,
+              fontWeight: 700,
+              borderRadius: 14,
+              padding: '12px 14px',
+              cursor: 'pointer',
+              border: mode === 'custom' ? '2px solid #10b981' : '1px solid #10b981',
+              background: mode === 'custom' ? '#059669' : 'rgba(16, 185, 129, 0.15)',
+              color: '#fff',
+              boxShadow: mode === 'custom' ? '0 0 16px rgba(16,185,129,0.4)' : 'none',
+              transition: 'all 0.12s ease',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              textAlign: 'center'
+            }}
+            onClick={() => setMode('custom')}
+          >
+            + Kendin Belirle
+          </button>
         </div>
       </section>
 
       {mode === 'custom' && (
-        <section className="tq-custom-flow">
-          <CustomStep title="1. Ekmek Türü" complete={Boolean(bread)}><ChoiceList values={BREADS} selected={bread} onSelect={setBread} /></CustomStep>
-          {bread && <CustomStep title="2. İç Malzemeler" hint="En fazla 3 seçim" complete={fillings.length > 0}><ChoiceList values={FILLINGS} selected={fillings} max={3} onSelect={(item) => toggleValue(item, fillings, setFillings)} /></CustomStep>}
-          {bread && fillings.length > 0 && <CustomStep title="3. Peynir İlavesi" complete={Boolean(cheese)}><ChoiceList values={CHEESES} selected={cheese} onSelect={setCheese} /></CustomStep>}
-          {bread && fillings.length > 0 && cheese && <CustomStep title="4. Yeşillik / İlave Tercihi" complete={Boolean(organic) && (organic === 'Organik İlavesiz' || greens.length > 0)}>
-            <ChoiceList values={['Organik İlaveli', 'Organik İlavesiz']} selected={organic} onSelect={(item) => { setOrganic(item); if (item === 'Organik İlavesiz') setGreens([]); }} />
-            {organic === 'Organik İlaveli' && <div className="tq-subchoice"><div className="tq-choice-hint">En fazla 3 ilave seçin</div><ChoiceList values={GREENS} selected={greens} max={3} onSelect={(item) => toggleValue(item, greens, setGreens)} /></div>}
-          </CustomStep>}
-          {bread && fillings.length > 0 && cheese && organic && (organic === 'Organik İlavesiz' || greens.length > 0) && <CustomStep title="5. Özel Sos Tercihi" complete={Boolean(sauce)}><ChoiceList values={['Özel Sos', 'Özel Sos İstemiyorum']} selected={sauce} onSelect={setSauce} /></CustomStep>}
+        <section className="tq-custom-flow" style={{ display: 'flex', flexDirection: 'column', gap: 16, marginBottom: 20 }}>
+          <CustomStep title="1. Ekmek Türü" complete={Boolean(bread)}>
+            <ChoiceList values={BREADS} selected={bread} onSelect={setBread} />
+          </CustomStep>
+          {bread && (
+            <CustomStep title="2. İç Malzemeler" hint="En fazla 3 seçim" complete={fillings.length > 0}>
+              <ChoiceList values={FILLINGS} selected={fillings} max={3} onSelect={(item) => toggleValue(item, fillings, setFillings)} />
+            </CustomStep>
+          )}
+          {bread && fillings.length > 0 && (
+            <CustomStep title="3. Peynir İlavesi" complete={Boolean(cheese)}>
+              <ChoiceList values={CHEESES} selected={cheese} onSelect={setCheese} />
+            </CustomStep>
+          )}
+          {bread && fillings.length > 0 && cheese && (
+            <CustomStep title="4. Yeşillik / İlave Tercihi" complete={Boolean(organic) && (organic === 'Organik İlavesiz' || greens.length > 0)}>
+              <ChoiceList values={['Organik İlaveli', 'Organik İlavesiz']} selected={organic} onSelect={(item) => { setOrganic(item); if (item === 'Organik İlavesiz') setGreens([]); }} />
+              {organic === 'Organik İlaveli' && (
+                <div style={{ marginTop: 14, paddingTop: 12, borderTop: '1px dashed rgba(255,255,255,0.15)' }}>
+                  <div style={{ fontSize: 14, marginBottom: 10, opacity: 0.8 }}>En fazla 3 ilave seçin:</div>
+                  <ChoiceList values={GREENS} selected={greens} max={3} onSelect={(item) => toggleValue(item, greens, setGreens)} />
+                </div>
+              )}
+            </CustomStep>
+          )}
+          {bread && fillings.length > 0 && cheese && organic && (organic === 'Organik İlavesiz' || greens.length > 0) && (
+            <CustomStep title="5. Özel Sos Tercihi" complete={Boolean(sauce)}>
+              <ChoiceList values={['Özel Sos', 'Özel Sos İstemiyorum']} selected={sauce} onSelect={setSauce} />
+            </CustomStep>
+          )}
         </section>
       )}
-      <div className="tq-menu-footer"><button className="tq-scan-btn tq-menu-continue" disabled={!canContinue} onClick={continueMenu}>İlerle →</button></div>
+
+      <div className="tq-menu-footer" style={{ marginTop: 'auto', paddingTop: 16 }}>
+        <button
+          className="tq-scan-btn tq-menu-continue"
+          disabled={!canContinue}
+          onClick={continueMenu}
+          style={{
+            width: '100%',
+            minHeight: 68,
+            fontSize: 22,
+            fontWeight: 700,
+            borderRadius: 16,
+            justifyContent: 'center',
+            boxShadow: canContinue ? '0 8px 24px rgba(37,99,235,0.3)' : 'none'
+          }}
+        >
+          İlerle →
+        </button>
+      </div>
     </div>
   );
 }
 
 function CustomStep({ title, hint, complete, children }) {
-  return <div className="tq-custom-step"><div className="tq-custom-step-heading"><strong>{title}</strong>{hint && <span>{hint}</span>}<span className={complete ? 'complete' : ''}>{complete ? 'Tamamlandı' : 'Zorunlu'}</span></div>{children}</div>;
+  return (
+    <div style={{
+      background: 'rgba(255, 255, 255, 0.05)',
+      border: '1px solid rgba(255, 255, 255, 0.12)',
+      borderRadius: 14,
+      padding: 16
+    }}>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+          <strong style={{ fontSize: 17 }}>{title}</strong>
+          {hint && <span style={{ fontSize: 13, opacity: 0.7 }}>({hint})</span>}
+        </div>
+        <span style={{
+          fontSize: 13,
+          fontWeight: 600,
+          padding: '3px 10px',
+          borderRadius: 8,
+          background: complete ? '#059669' : 'rgba(255,255,255,0.1)',
+          color: '#fff'
+        }}>
+          {complete ? '✓ Tamamlandı' : 'Zorunlu'}
+        </span>
+      </div>
+      {children}
+    </div>
+  );
 }
 
 function ChoiceList({ values, selected, max, onSelect }) {
-  return <div className="tq-choice-grid tq-choice-grid-small">{values.map((value) => { const active = Array.isArray(selected) ? selected.includes(value) : selected === value; const capped = max && Array.isArray(selected) && selected.length >= max && !active; return <button key={value} className={`tq-choice${active ? ' selected' : ''}`} disabled={capped} onClick={() => onSelect(value)}>{value}</button>; })}</div>;
+  return (
+    <div style={{
+      display: 'grid',
+      gridTemplateColumns: 'repeat(auto-fill, minmax(150px, 1fr))',
+      gap: 12
+    }}>
+      {values.map((value) => {
+        const active = Array.isArray(selected) ? selected.includes(value) : selected === value;
+        const capped = max && Array.isArray(selected) && selected.length >= max && !active;
+        return (
+          <button
+            key={value}
+            disabled={capped}
+            style={{
+              minHeight: 64,
+              fontSize: 16,
+              fontWeight: 600,
+              borderRadius: 12,
+              padding: '10px 12px',
+              cursor: capped ? 'not-allowed' : 'pointer',
+              opacity: capped ? 0.4 : 1,
+              border: active ? '2px solid #3b82f6' : '1px solid rgba(255,255,255,0.15)',
+              background: active ? '#2563eb' : 'rgba(255,255,255,0.06)',
+              color: '#fff',
+              boxShadow: active ? '0 0 12px rgba(37,99,235,0.35)' : 'none',
+              transition: 'all 0.1s ease',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              textAlign: 'center'
+            }}
+            onClick={() => onSelect(value)}
+          >
+            {value}
+          </button>
+        );
+      })}
+    </div>
+  );
 }
 
 function SelectView({ now, tickets, user, expanded, setExpanded, orderSelection, onSelect, onHome }) {

@@ -20,6 +20,7 @@ export default function App() {
   const [devOpen, setDevOpen] = useState(false);
   const [pendingCard, setPendingCard] = useState(null); // {id, code}
   const [pendingUser, setPendingUser] = useState(null); // {first_name, last_name}
+  const [orderSelection, setOrderSelection] = useState(null);
   const [lastTicket, setLastTicket] = useState(null);
   const [profile, setProfile] = useState(null);
   const [deletionRequestSent, setDeletionRequestSent] = useState(false);
@@ -50,7 +51,8 @@ export default function App() {
   // ---------------------------------------------------------------------
   const proceedToOrder = useCallback((card, activeTicketHint) => {
     setExpanded(false);
-    setView('select');
+    setOrderSelection(null);
+    setView('menu');
   }, []);
 
   const handleScan = useCallback(
@@ -170,6 +172,7 @@ export default function App() {
     setExpanded(false);
     setPendingCard(null);
     setPendingUser(null);
+    setOrderSelection(null);
     setLastTicket(null);
     setProfile(null);
     setRegisterFirst('');
@@ -180,7 +183,13 @@ export default function App() {
     setExpanded(false);
     setPendingCard(null);
     setPendingUser(null);
+    setOrderSelection(null);
     setView('scanning');
+  }
+
+  function continueToSchedule(selection) {
+    setOrderSelection(selection);
+    setView('select');
   }
 
   function goRegisterForm() {
@@ -273,6 +282,7 @@ export default function App() {
         <IdleView tickets={sortedTickets} now={nowMs} pickUp={pickUp} startOrder={startOrder} goRegisterForm={goRegisterForm} />
       )}
       {view === 'scanning' && <ScanningView text="Kartınızı okuyucuya okutun…" onCancel={goHome} />}
+      {view === 'menu' && <ToastMenuView onContinue={continueToSchedule} onHome={goHome} />}
       {view === 'select' && (
         <SelectView
           now={nowMs}
@@ -280,6 +290,7 @@ export default function App() {
           user={currentUser}
           expanded={expanded}
           setExpanded={setExpanded}
+          orderSelection={orderSelection}
           onSelect={createTicket}
           onHome={goHome}
         />
@@ -552,7 +563,81 @@ function ScanningView({ text, onCancel }) {
   );
 }
 
-function SelectView({ now, tickets, user, expanded, setExpanded, onSelect, onHome }) {
+const STANDARD_TOASTS = ['Sucuklu', 'Patatesli', 'Kaşarlı (Sade)', 'Kavurmalı', 'Ton Balıklı', 'Yumurtalı', 'Karışık', 'Vejetaryen'];
+const BREADS = ['Tam Buğday', 'Kepekli', 'Beyaz Ekmek', 'Susamlı'];
+const FILLINGS = ['Sucuk', 'Kavurma', 'Ton Balığı', 'Yumurta', 'Kızartılmış Patates', 'Salam', 'Sosis'];
+const CHEESES = ['Kaşar Peyniri', 'Cheddar Peyniri', 'Peynir İstemiyorum'];
+const GREENS = ['Salatalık', 'Avokado', 'Marul', 'Zeytin', 'Mısır', 'Patates Püresi', 'Brokoli'];
+
+function ToastMenuView({ onContinue, onHome }) {
+  const [mode, setMode] = useState(null);
+  const [standard, setStandard] = useState('');
+  const [bread, setBread] = useState('');
+  const [fillings, setFillings] = useState([]);
+  const [cheese, setCheese] = useState('');
+  const [organic, setOrganic] = useState('');
+  const [greens, setGreens] = useState([]);
+  const [sauce, setSauce] = useState('');
+
+  const customComplete = Boolean(bread && fillings.length > 0 && cheese && organic && sauce && (organic === 'Organik İlavesiz' || greens.length > 0));
+  const canContinue = mode === 'standard' ? Boolean(standard) : mode === 'custom' && customComplete;
+
+  function toggleValue(value, values, setValues) {
+    setValues(values.includes(value) ? values.filter((item) => item !== value) : [...values, value]);
+  }
+
+  function continueMenu() {
+    if (!canContinue) return;
+    onContinue(mode === 'standard'
+      ? { type: 'standard', name: standard }
+      : { type: 'custom', bread, fillings, cheese, organic, greens, sauce });
+  }
+
+  return (
+    <div className="tq-main tq-menu-page">
+      <button className="tq-back" onClick={onHome}>← Vazgeç</button>
+      <div className="tq-menu-header">
+        <div className="tq-select-title">Tost Menüsü</div>
+        <div className="tq-confirm-sub">Önce tostunuzu seçin, sonra hazırlık zamanını belirleyin.</div>
+      </div>
+      <section className="tq-menu-section">
+        <div className="tq-menu-section-title">Standart</div>
+        <div className="tq-choice-grid">
+          {STANDARD_TOASTS.map((item) => (
+            <button key={item} className={`tq-choice${mode === 'standard' && standard === item ? ' selected' : ''}`} onClick={() => { setMode('standard'); setStandard(item); }}>
+              {item}
+            </button>
+          ))}
+          <button className={`tq-choice custom${mode === 'custom' ? ' selected' : ''}`} onClick={() => setMode('custom')}>+ Kendin Belirle</button>
+        </div>
+      </section>
+
+      {mode === 'custom' && (
+        <section className="tq-custom-flow">
+          <CustomStep title="1. Ekmek Türü" complete={Boolean(bread)}><ChoiceList values={BREADS} selected={bread} onSelect={setBread} /></CustomStep>
+          {bread && <CustomStep title="2. İç Malzemeler" hint="En fazla 3 seçim" complete={fillings.length > 0}><ChoiceList values={FILLINGS} selected={fillings} max={3} onSelect={(item) => toggleValue(item, fillings, setFillings)} /></CustomStep>}
+          {bread && fillings.length > 0 && <CustomStep title="3. Peynir İlavesi" complete={Boolean(cheese)}><ChoiceList values={CHEESES} selected={cheese} onSelect={setCheese} /></CustomStep>}
+          {bread && fillings.length > 0 && cheese && <CustomStep title="4. Yeşillik / İlave Tercihi" complete={Boolean(organic) && (organic === 'Organik İlavesiz' || greens.length > 0)}>
+            <ChoiceList values={['Organik İlaveli', 'Organik İlavesiz']} selected={organic} onSelect={(item) => { setOrganic(item); if (item === 'Organik İlavesiz') setGreens([]); }} />
+            {organic === 'Organik İlaveli' && <div className="tq-subchoice"><div className="tq-choice-hint">En fazla 3 ilave seçin</div><ChoiceList values={GREENS} selected={greens} max={3} onSelect={(item) => toggleValue(item, greens, setGreens)} /></div>}
+          </CustomStep>}
+          {bread && fillings.length > 0 && cheese && organic && (organic === 'Organik İlavesiz' || greens.length > 0) && <CustomStep title="5. Özel Sos Tercihi" complete={Boolean(sauce)}><ChoiceList values={['Özel Sos', 'Özel Sos İstemiyorum']} selected={sauce} onSelect={setSauce} /></CustomStep>}
+        </section>
+      )}
+      <div className="tq-menu-footer"><button className="tq-scan-btn tq-menu-continue" disabled={!canContinue} onClick={continueMenu}>İlerle →</button></div>
+    </div>
+  );
+}
+
+function CustomStep({ title, hint, complete, children }) {
+  return <div className="tq-custom-step"><div className="tq-custom-step-heading"><strong>{title}</strong>{hint && <span>{hint}</span>}<span className={complete ? 'complete' : ''}>{complete ? 'Tamamlandı' : 'Zorunlu'}</span></div>{children}</div>;
+}
+
+function ChoiceList({ values, selected, max, onSelect }) {
+  return <div className="tq-choice-grid tq-choice-grid-small">{values.map((value) => { const active = Array.isArray(selected) ? selected.includes(value) : selected === value; const capped = max && Array.isArray(selected) && selected.length >= max && !active; return <button key={value} className={`tq-choice${active ? ' selected' : ''}`} disabled={capped} onClick={() => onSelect(value)}>{value}</button>; })}</div>;
+}
+
+function SelectView({ now, tickets, user, expanded, setExpanded, orderSelection, onSelect, onHome }) {
   const maps = computeMaps(tickets, now);
   const positions = candidatePositions();
   const nearest = nearestOpenPosition(now, maps);
@@ -577,6 +662,7 @@ function SelectView({ now, tickets, user, expanded, setExpanded, onSelect, onHom
         <div className="tq-select-title">
           {user ? `Merhaba ${user.first_name}, tost ne zaman hazır olsun?` : 'Tost ne zaman hazır olsun?'}
         </div>
+        {orderSelection && <div className="tq-order-summary">Seçiminiz: {orderSelection.type === 'standard' ? orderSelection.name : 'Kendin Belirle'}</div>}
         {primary}
         <button className="tq-expand-btn" onClick={() => setExpanded((v) => !v)}>
           {expanded ? 'Saatleri gizle ▴' : 'Başka saat seç ▾'}

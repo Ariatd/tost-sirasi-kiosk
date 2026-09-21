@@ -10,13 +10,15 @@ export default function MobileTrackView({ ticketCode, targetTime }) {
     return () => clearInterval(id);
   }, []);
 
-  // 2. Eğer targetTime gelmediyse backend'den sorgula (Fallback)
+  // 2. targetTime URL'de yoksa backend API'den sorgula (Fallback)
   useEffect(() => {
     if (scheduledTime) return;
 
+    let isMounted = true;
     fetch('/api/state')
       .then((r) => r.json())
       .then((data) => {
+        if (!isMounted) return;
         const tickets = data.tickets || [];
         const cleanTarget = String(ticketCode || '').trim().replace(/^0+/, '');
         const found = tickets.find((t) => {
@@ -28,6 +30,10 @@ export default function MobileTrackView({ ticketCode, targetTime }) {
         }
       })
       .catch(() => {});
+
+    return () => {
+      isMounted = false;
+    };
   }, [ticketCode, scheduledTime]);
 
   const remainingMs = scheduledTime ? scheduledTime - nowMs : null;
@@ -75,7 +81,7 @@ export default function MobileTrackView({ ticketCode, targetTime }) {
           width: '100%'
         }}>
           <div style={{ fontSize: 44, fontWeight: 900, color: '#f59e0b', marginBottom: 12 }}>
-            {ticketCode}
+            {ticketCode || '—'}
           </div>
           <p style={{ color: '#cbd5e1', fontSize: 15, margin: 0, lineHeight: 1.5 }}>
             Sipariş sırada bulunamadı veya teslim edildi olarak işaretlendi.

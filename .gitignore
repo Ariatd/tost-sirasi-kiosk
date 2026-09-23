@@ -27,3 +27,4 @@ backend/libs/
 # --- editör ---
 .vscode/
 .idea/
+.aider*

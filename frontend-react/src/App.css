@@ -1,0 +1,133 @@
+
+/* --- KIOSK MODERN TOAST MENU STYLES (v2.2.11) --- */
+.tq-menu-page {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  padding: 24px;
+  box-sizing: border-box;
+  gap: 20px;
+}
+
+.tq-menu-header h2 {
+  font-size: 1.8rem;
+  margin: 0 0 8px 0;
+  color: #1e293b;
+  font-weight: 700;
+}
+
+.tq-menu-header p {
+  font-size: 1.1rem;
+  color: #64748b;
+  margin: 0;
+}
+
+.tq-menu-section {
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+  border-radius: 16px;
+  padding: 20px;
+  box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05);
+}
+
+.tq-menu-section h3 {
+  font-size: 1.3rem;
+  margin: 0 0 16px 0;
+  color: #334155;
+  font-weight: 600;
+}
+
+.tq-choice-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 16px;
+}
+
+.tq-choice-btn {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  min-height: 90px;
+  padding: 16px;
+  font-size: 1.15rem;
+  font-weight: 600;
+  color: #1e293b;
+  background: #ffffff;
+  border: 2px solid #cbd5e1;
+  border-radius: 14px;
+  cursor: pointer;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.04);
+  transition: all 0.15s ease-in-out;
+  user-select: none;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.tq-choice-btn:active {
+  transform: scale(0.97);
+}
+
+.tq-choice-btn.selected {
+  background: #eff6ff;
+  border-color: #2563eb;
+  color: #1d4ed8;
+  box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.2);
+}
+
+.tq-custom-flow {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.tq-custom-step {
+  background: #ffffff;
+  border: 1px solid #e2e8f0;
+  border-radius: 12px;
+  padding: 16px;
+}
+
+.tq-custom-step h4 {
+  margin: 0 0 12px 0;
+  font-size: 1.1rem;
+  color: #475569;
+}
+
+.tq-menu-continue {
+  margin-top: auto;
+  display: flex;
+  gap: 16px;
+  padding-top: 16px;
+}
+
+.tq-menu-continue button {
+  flex: 1;
+  min-height: 64px;
+  font-size: 1.25rem;
+  font-weight: 700;
+  border-radius: 14px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.tq-menu-continue button:first-child {
+  flex: 0.4;
+  background: #f1f5f9;
+  color: #475569;
+  border: 1px solid #cbd5e1;
+}
+
+.tq-menu-continue button:last-child {
+  flex: 0.6;
+  background: #16a34a;
+  color: #ffffff;
+  border: none;
+  box-shadow: 0 4px 6px -1px rgba(22, 163, 74, 0.3);
+}
+
+.tq-menu-continue button:disabled {
+  background: #e2e8f0;
+  color: #94a3b8;
+  cursor: not-allowed;
+  box-shadow: none;
+}

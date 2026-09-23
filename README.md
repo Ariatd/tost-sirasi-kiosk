@@ -28,20 +28,30 @@ paketiyle yapılır.
                          │ admin API (X-Admin-Token)  │  │ (125 kHz EM4100)      │  │
                          │                            │  └───────────┬───────────┘  │
                 ┌────────▼────────┐                   │   POST /api/card-scan ─────┼──▶ (yukarıya)
-                │ admin-tool       │                   └─────────────────────────────┘
-                │ tost-admin.py    │
-                │ (Tkinter, kendi  │
-                │  bilgisayarınızdan) │
+                │ admin-tool       │                   └──────────────┬──────────────┘
+                │ tost-admin.py    │                                  │ (Onay ekranında
+                │ (Tkinter, kendi  │                                  │  Dinamik QR Kod)
+                │  bilgisayarınızdan) │                                 ▼
+                └──────────────────┘                         ┌─────────────────┐
+                         │                                   │ Mobil Kullanıcı │
+                         │ (Cloudflare Tunnels)              │ (4.5G/Hücresel) │
+                         ▼                                   │ Canlı Takip &   │
+                ┌──────────────────┐                         │ Geri Sayım      │
+                │ cloudflared      │────────────────────────▶│                 │
+                │ systemd servisi  │                         └─────────────────┘
                 └──────────────────┘
 ```
 
-Panelde tek bir systemd `--user` servisi vardır:
+Panelde ve geliştirici makinesinde çalışan systemd `--user` servisleri:
 
 - `tost-kiosk-electron.service` — Client Mode (Electron): CH340 okuyucuyu
   yerelde okur, `POST /api/card-scan` ile yukarıdaki backend'e bildirir,
   aynı React arayüzünü gösterir. `.deb` paketinin kurduğu
   `/usr/bin/tost-kiosk-client` ikilisini çalıştırır (bkz.
   [Client Mode masaüstü paketi](#client-mode-masaüstü-paketi-deb)).
+- `cloudflared-tunnel.service` — Mobil canlı takip için Cloudflare tünelini
+  arka planda kesintisiz çalıştıran kullanıcı servisi (bkz.
+  [Mobil Canlı Takip & Cloudflare Tunnel](#mobil-canlı-takip--cloudflare-tunnel-systemd)).
 
 Eski, tek-makinede-tam-yerel mimarinin kalıntıları (`backend/static` —
 vanilla JS + pywebview, ve panelde kendi backend'ini çalıştıran eski
@@ -57,6 +67,7 @@ backend/          backend kaynağı — artık PANELDE DEĞİL, geliştiricinin
                    (server.py, static/ [arşiv], deploy/)
 frontend-react/   Client Mode kaynağı: React + Electron (serialport),
                    Vite + electron-builder ile AppImage/.deb paketleme
+                   (MobileTrackView.jsx ile canlı mobil takip görünümü)
 admin-tool/       tost-admin.py — Tkinter yönetim uygulaması (kendi bilgisayarınızda)
 docs/             ekran görüntüleri / notlar (opsiyonel)
 ```
@@ -86,6 +97,14 @@ docs/             ekran görüntüleri / notlar (opsiyonel)
   yükleniyor; panel (ya da başka herhangi bir Ubuntu 24.04 cihazı) tek
   başına `wget` + `apt install` ile indirip kurabiliyor — geliştiricinin
   dosya yoluna/makinesine bağımlı kalmadan.
+- **Canlı Mobil Takip (QR + Cloudflare Tunnel + Offline Dayanıklılık).**  
+  Kiosktan sipariş veren kullanıcının panelin önünde beklemesini engellemek
+  için onay ekranında dinamik QR kod gösterilir. Kullanıcı aynı yerel Wi-Fi
+  ağına bağlı olmak zorunda kalmadan hücresel verisiyle (4.5G) Cloudflare
+  tüneli üzerinden siparişini saniye saniye takip edebilir. Hazır olma zaman
+  damgası (`until`) doğrudan QR URL parametresine gömülüdür; böylece mobil
+  ağ kopsa dahi istemci tarafında canlı geri sayım kesintisiz devam eder ve
+  süre bitiminde "TOSTUNUZ HAZIR!" kartına kilitlenir.
 
 ## İş mantığı özeti
 
@@ -162,6 +181,41 @@ Electron/AppImage/`.deb` derleme ve panele kurulum için aşağıdaki
 [Client Mode masaüstü paketi (.deb)](#client-mode-masaüstü-paketi-deb)
 bölümüne bakın — Node kurmadan, Docker ile derlenir.
 
+### Mobil Canlı Takip & Cloudflare Tunnel (systemd)
+
+Mobil takibin kullanıcının hücresel verisinde kesintisiz çalışması ve
+terminal kapatılsa bile ayakta kalması için Cloudflare tüneli kalıcı bir
+systemd kullanıcı servisi olarak yapılandırılmıştır:
+
+```bash
+mkdir -p ~/.config/systemd/user
+
+cat << 'EOF' > ~/.config/systemd/user/cloudflared-tunnel.service
+[Unit]
+Description=Cloudflare Tunnel for Tost Kiosk
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+ExecStart=/usr/bin/cloudflared tunnel --protocol http2 --url http://localhost:3000
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=default.target
+EOF
+
+systemctl --user daemon-reload
+systemctl --user enable --now cloudflared-tunnel.service
+```
+
+Mobil takip arayüzü (`MobileTrackView.jsx`), kiosk ekranındaki onay görünümünde
+oluşturulan `https://<tunnel-url>/?track=<KOD>&until=<TIMESTAMP>` bağlantısını
+işler. Kalan süre milisaniyelik zaman damgası farkıyla saniyede bir taranarak
+ekranda `04:59` formatında canlı akar; süre dolduğunda otomatik olarak
+"TOSTUNUZ HAZIR!" arayüzüne geçer.
+
 ### Client Mode masaüstü paketi (.deb)
 
 AppImage'ın yanına, standart Ubuntu/Debian kurulumu için `.deb` hedefi de
@@ -174,8 +228,8 @@ Kendi bilgisayarınızda derlemenize gerek yok — GitHub Release'den doğrudan
 indirip kurabilirsiniz (panel PC dahil, SCP/dosya yoluna bağımlı kalmadan):
 
 ```bash
-wget https://github.com/Ariatd/tost-sirasi-kiosk/releases/download/v2.0.4/tost-kiosk-client_2.0.4_amd64.deb
-sudo apt install --reinstall ./tost-kiosk-client_2.0.4_amd64.deb
+wget https://github.com/Ariatd/tost-sirasi-kiosk/releases/download/v2.2.12/tost-kiosk-client_2.2.12_amd64.deb
+sudo apt install --reinstall ./tost-kiosk-client_2.2.12_amd64.deb
 ```
 
 Kurulunca uygulama menüsünde **"Tost Sırası - Client"** olarak görünür;
@@ -190,7 +244,7 @@ bu depoyu hazırlayan geliştiricinin **kendi ev ağında** çalışır. Uygulam
 açılışta `~/.config/tost-kiosk-client/config.env` dosyasını (yoksa) bu
 varsayılanla oluşturur; **kendi backend'inizi ayakta tutup** bu dosyadaki
 `TOST_BACKEND_URL` satırını kendi IP'nize göre değiştirip uygulamayı yeniden
-başlatmanız gerekir. Ortam değişkeni (`TOST_BACKEND_URL=... `, örn. bir
+başlatmanız gerekir. Ortam değişkeni (`TOST_BACKEND_URL=...`, örn. bir
 systemd `Environment=` satırı) varsa config.env'den önce o kullanılır.
 
 Panelde zaten `tost-kiosk-electron.service` (bkz. aşağı) systemd `--user`
@@ -289,21 +343,24 @@ journalctl --user -u tost-kiosk-backend.service -f   # canlı log
 
 ### Client Mode (frontend-react) değiştiyse (panel PC)
 
-1. `frontend-react/package.json`'da `version`'ı artırın (ör. `2.0.4` →
-   `2.0.5`) ve `run.sh`'daki `APPIMAGE=` satırını buna göre güncelleyin.
+1. `frontend-react/package.json`'da `version`'ı artırın (ör. `2.2.11` → `2.2.12`)
+   ve `run.sh`'daki `APPIMAGE=` satırını buna göre güncelleyin.
 2. [Kendi paketinizi derlemek](#kendi-paketinizi-derlemek) bölümündeki
    Docker komutlarıyla yeni `.deb`/AppImage'ı üretin.
 3. Yeni sürümü bir GitHub Release'e asset olarak ekleyin:
-   ```bash
-   gh release create v<sürüm> "frontend-react/release/tost-kiosk-client_<sürüm>_amd64.deb" \
-     --title "Client Mode v<sürüm> (.deb)" --notes "..."
-   ```
+
+```bash
+gh release create v<sürüm> "frontend-react/release/tost-kiosk-client_<sürüm>_amd64.deb" \
+  --title "Client Mode v<sürüm> (.deb)" --notes "..."
+```
+
 4. Panelde (SSH ile ya da doğrudan panelin kendi terminalinden):
-   ```bash
-   wget https://github.com/Ariatd/tost-sirasi-kiosk/releases/download/v<sürüm>/tost-kiosk-client_<sürüm>_amd64.deb
-   sudo apt install --reinstall ./tost-kiosk-client_<sürüm>_amd64.deb
-   systemctl --user restart tost-kiosk-electron.service
-   ```
+
+```bash
+wget https://github.com/Ariatd/tost-sirasi-kiosk/releases/download/v<sürüm>/tost-kiosk-client_<sürüm>_amd64.deb
+sudo apt install --reinstall ./tost-kiosk-client_<sürüm>_amd64.deb
+systemctl --user restart tost-kiosk-electron.service
+```
 
 Artık panele dosya **gönderilmiyor** (rsync/scp yok) — panel kendi
 başına GitHub'dan indirip kuruyor. Panel PC'ye SSH şifreyle bağlanılıyor

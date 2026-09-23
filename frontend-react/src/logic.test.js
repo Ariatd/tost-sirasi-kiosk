@@ -35,13 +35,13 @@ describe('dolu basamak + senkron önizleme (bir önceki basamak)', () => {
   // Tek bilet: tam 40 dk sonrasına (pozisyon 8) planlanmış.
   const ticket = { id: 1, card_id: 'CARD1', code: '42', scheduled_time: NOW + 8 * SLOT_MS };
 
-  it('dolu basamak (8) gerçek kalan süreyi gösterir, "Dolu · <kod>" etiketiyle', () => {
+  it('dolu basamak (8) gerçek kalan süreyi gösterir, "#<kod>" etiketiyle', () => {
     const maps = computeMaps([ticket], NOW);
     const d = describePosition(8, NOW, maps);
     expect(d.taken).toBe(true);
     expect(d.blocked).toBeFalsy();
     expect(d.label).toBe(formatMinutes(ticket.scheduled_time - NOW));
-    expect(d.subLabel).toBe('Dolu · 42');
+    expect(d.subLabel).toBe('#42');
   });
 
   it('bir önceki basamak (7) canlı önizleme gösterir: hedef - 5dk', () => {
@@ -74,11 +74,11 @@ describe('dolu basamak + senkron önizleme (bir önceki basamak)', () => {
     // 5 dk ilerlet: artık gerçek kalan süre 35 dk -> ceil(35/5)=7
     const now = NOW + 5 * 60_000;
     const maps = computeMaps([ticket], now);
-    expect(maps.occupiedMap.has(7)).toBe(true);
-    expect(maps.occupiedMap.has(8)).toBe(false);
+    expect(Boolean(maps.taken[7])).toBe(true);
+    expect(Boolean(maps.taken[8])).toBe(false);
     const d7 = describePosition(7, now, maps);
     expect(d7.taken).toBe(true);
-    expect(d7.subLabel).toBe('Dolu · 42');
+    expect(d7.subLabel).toBe('#42');
   });
 });
 
@@ -122,8 +122,8 @@ describe('Math.ceil ile slot geçişlerinde anında kayma', () => {
     const maps = computeMaps([ticket], nowAt31MinRemaining);
 
     // Ticket should still be at position 7 (Math.ceil(31min / 5min) = Math.ceil(6.2) = 7)
-    expect(maps.occupiedMap.get(7)?.code).toBe('TS');
-    expect(maps.occupiedMap.has(6)).toBe(false);
+    expect(maps.taken[7]?.code).toBe('TS');
+    expect(Boolean(maps.taken[6])).toBe(false);
 
     // Label for occupied slot (pos 7): Remaining 31 minutes -> '31 dk'
     expect(describePosition(7, nowAt31MinRemaining, maps).label).toBe('31 dk');
@@ -142,8 +142,8 @@ describe('Math.ceil ile slot geçişlerinde anında kayma', () => {
     const maps = computeMaps([ticket], nowAt30Min59SecRemaining);
 
     // Ticket should still be at position 7 (Math.ceil(30min 59sec / 5min) = Math.ceil(6.19...) = 7)
-    expect(maps.occupiedMap.get(7)?.code).toBe('TS');
-    expect(maps.occupiedMap.has(6)).toBe(false);
+    expect(maps.taken[7]?.code).toBe('TS');
+    expect(Boolean(maps.taken[6])).toBe(false);
 
     // Label for occupied slot (pos 7): Remaining 30min 59sec -> Math.ceil(30.98) -> '31 dk'
     expect(describePosition(7, nowAt30Min59SecRemaining, maps).label).toBe('31 dk');
@@ -161,8 +161,8 @@ describe('Math.ceil ile slot geçişlerinde anında kayma', () => {
     const maps = computeMaps([ticket], nowAt30MinRemaining);
 
     // Ticket should now be at position 6 (Math.ceil(30min / 5min) = Math.ceil(6) = 6)
-    expect(maps.occupiedMap.has(7)).toBe(false);
-    expect(maps.occupiedMap.get(6)?.code).toBe('TS');
+    expect(Boolean(maps.taken[7])).toBe(false);
+    expect(maps.taken[6]?.code).toBe('TS');
 
     // Label for occupied slot (pos 6): Remaining 30 minutes -> '30 dk'
     expect(describePosition(6, nowAt30MinRemaining, maps).label).toBe('30 dk');
@@ -185,8 +185,8 @@ describe('kart başına aktif bilet sayısı — mantığın uygulama katmanına
     const t1 = { id: 1, card_id: 'A', code: '11', scheduled_time: NOW + 5 * 60_000 };
     const t2 = { id: 2, card_id: 'B', code: '22', scheduled_time: NOW + 10 * 60_000 };
     const maps = computeMaps([t1, t2], NOW);
-    expect(maps.occupiedMap.get(1).card_id).toBe('A');
-    expect(maps.occupiedMap.get(2).card_id).toBe('B');
+    expect(maps.taken[1].card_id).toBe('A');
+    expect(maps.taken[2].card_id).toBe('B');
   });
 });
 

@@ -6,9 +6,9 @@ contextBridge.exposeInMainWorld('tostNative', {
   minimize: () => ipcRenderer.invoke('tost:minimize'),
   toggleFullscreen: () => ipcRenderer.invoke('tost:toggleFullscreen'),
   quit: () => ipcRenderer.invoke('tost:quit'),
-  // no-reader.html "Tekrar Dene" butonu: okuyucuyu yeniden tara, bulunursa
-  // main process gercek uygulamayi kendisi yukler (true doner).
   retryReaderScan: () => ipcRenderer.invoke('tost:retryReaderScan'),
+  applyUpdate: (downloadUrl) => ipcRenderer.invoke('tost:applyUpdate', downloadUrl),
+  getVersion: () => ipcRenderer.invoke('tost:getVersion'),
 });
 
 window.dispatchEvent(new Event('tostnativeready'));

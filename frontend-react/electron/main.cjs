@@ -21,6 +21,7 @@ const path = require("path");
 const fs = require("fs");
 const os = require("os");
 const http = require("http");
+const { exec } = require("child_process");
 const { SerialPort } = require("serialport");
 const { parseFrames, em4100Core } = require("./serial-parser.cjs");
 
@@ -314,6 +315,27 @@ ipcMain.handle("tost:minimize", () => win?.minimize());
 ipcMain.handle("tost:toggleFullscreen", () => win?.setFullScreen(!win.isFullScreen()));
 ipcMain.handle("tost:quit", () => app.quit());
 ipcMain.handle("tost:retryReaderScan", () => tryStartReaderThenApp());
+ipcMain.handle("tost:getVersion", () => app.getVersion());
+
+// OTA Güncelleme: GitHub'dan gelen downloadUrl adresini betiğe iletir
+ipcMain.handle("tost:applyUpdate", (event, downloadUrl) => {
+  return new Promise((resolve) => {
+    if (!downloadUrl) {
+      resolve({ ok: false, error: "İndirme bağlantısı (URL) eksik." });
+      return;
+    }
+    console.log("[OTA] Güncelleme betiği başlatılıyor. URL:", downloadUrl);
+    exec(`sudo /usr/local/bin/kiosk-update.sh "${downloadUrl}"`, (error, stdout, stderr) => {
+      if (error) {
+        console.error("[OTA] Hata:", stderr || error.message);
+        resolve({ ok: false, error: stderr || error.message });
+      } else {
+        console.log("[OTA] Başarılı:", stdout);
+        resolve({ ok: true });
+      }
+    });
+  });
+});
 
 app.on("before-quit", (event) => {
   if (resetFinished) return;

@@ -1,0 +1,12 @@
+# /etc/sudoers.d/kiosk-update
+#
+# Electron'un OTA güncelleme butonu, indirilen .deb'i kurabilmek için
+# kiosk-update.sh'ı şifre istemeden çalıştırabilmeli (grafik arayüzden
+# sudo şifresi girecek interaktif bir terminal yok). Sadece BU betiğe,
+# başka hiçbir komuta izin vermez.
+#
+# Kullanım: KULLANICI_ADI yerine gerçek kullanıcı adını yazıp
+# /etc/sudoers.d/kiosk-update olarak kaydedin, sonra:
+#   sudo chmod 440 /etc/sudoers.d/kiosk-update
+#   sudo visudo -c
+KULLANICI_ADI ALL=(ALL) NOPASSWD: /usr/local/bin/kiosk-update.sh

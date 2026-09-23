@@ -102,6 +102,7 @@ export default function App() {
   const [registerLast, setRegisterLast] = useState('');
   const [tickets, setTickets] = useState([]);
   const [tunnelUrl, setTunnelUrl] = useState(null);
+  const [devOpen, setDevOpen] = useState(false);
   const [outOfStock, setOutOfStock] = useState([]);
   const [clockSkew, setClockSkew] = useState(0);
   const [connected, setConnected] = useState(false);
@@ -382,6 +383,40 @@ export default function App() {
     await api('/api/ticket/dismiss', { ticket_id: ticketId });
   }
 
+  // Sıra listesindeki bekleyen (henüz hazır olmayan) bir karta dokununca
+  // QR kodunu tekrar gösterir — ilk seferde yetişemeyen müşteri için.
+  function showQrForTicket(ticket) {
+    setLastTicket(ticket);
+    setView('confirm');
+  }
+
+  // Test paneli: admin token'ı içeren istekleri asla bu genel JS paketinden
+  // atmıyoruz — Electron ana sürecine (main.cjs, config.env'deki
+  // TOST_ADMIN_TOKEN'ı bilen tek yer) IPC ile devrediyoruz. Electron
+  // dışında (ör. tarayıcıda geliştirme) bu köprü yoksa buton hata verir.
+  async function devAdvance() {
+    if (!window.tostNative?.devAdvance) {
+      window.alert('Bu özellik yalnızca paketlenmiş uygulamada çalışır.');
+      return;
+    }
+    const r = await window.tostNative.devAdvance();
+    if (!r.ok) window.alert(r.error || 'Test zamanı ilerletilemedi');
+  }
+
+  async function devReset() {
+    if (!window.tostNative?.devReset) {
+      window.alert('Bu özellik yalnızca paketlenmiş uygulamada çalışır.');
+      return;
+    }
+    const r = await window.tostNative.devReset();
+    if (r.ok) {
+      setTickets([]);
+      goHome();
+    } else {
+      window.alert(r.error || 'Test sıfırlanamadı');
+    }
+  }
+
   const nowMs = now();
   const currentUser = pendingUser;
   const sortedTickets = [...tickets].sort((a, b) => a.scheduled_time - b.scheduled_time);
@@ -393,6 +428,10 @@ export default function App() {
         lang={lang}
         toggleLang={toggleLang}
         now={nowMs}
+        devOpen={devOpen}
+        setDevOpen={setDevOpen}
+        devAdvance={devAdvance}
+        devReset={devReset}
         nativeReady={nativeReady}
         connected={connected}
         onSettings={openSettings}
@@ -406,6 +445,7 @@ export default function App() {
           now={nowMs}
           pickUp={pickUp}
           dismissCancelled={dismissCancelled}
+          onShowQr={showQrForTicket}
           startOrder={startOrder}
           startCancelFlow={startCancelFlow}
         />
@@ -505,7 +545,7 @@ export default function App() {
 // Topbar (Sade & Zarif Ortalanmış Saat)
 // =====================================================================
 
-function Topbar({ t, lang, toggleLang, now, nativeReady, connected, onSettings }) {
+function Topbar({ t, lang, toggleLang, now, devOpen, setDevOpen, devAdvance, devReset, nativeReady, connected, onSettings }) {
   return (
     <>
       <div className="tq-topbar" style={{ display: 'grid', gridTemplateColumns: '1fr auto 1fr', alignItems: 'center' }}>
@@ -543,6 +583,7 @@ function Topbar({ t, lang, toggleLang, now, nativeReady, connected, onSettings }
             {lang === 'tr' ? '🇬🇧 EN' : '🇹🇷 TR'}
           </button>
 
+          <button className="tq-dev-btn" onClick={() => setDevOpen((v) => !v)}>test</button>
           <button className="tq-settings-btn" title={t.settings} aria-label={t.settings} onClick={onSettings}>⚙</button>
           {nativeReady && (
             <>
@@ -558,6 +599,14 @@ function Topbar({ t, lang, toggleLang, now, nativeReady, connected, onSettings }
           )}
         </div>
       </div>
+      {devOpen && (
+        <div className="tq-dev-panel">
+          <div className="row">
+            <button className="tq-chip" onClick={devAdvance}>+5 dk</button>
+            <button className="tq-chip warn" onClick={devReset}>Sıfırla</button>
+          </div>
+        </div>
+      )}
     </>
   );
 }
@@ -566,7 +615,7 @@ function Topbar({ t, lang, toggleLang, now, nativeReady, connected, onSettings }
 // Ana Ekran (Sipariş Ver + İptal Butonları & Yeşil/Kırmızı Kartlar)
 // =====================================================================
 
-function IdleView({ t, lang, tickets, now, pickUp, dismissCancelled, startOrder, startCancelFlow }) {
+function IdleView({ t, lang, tickets, now, pickUp, dismissCancelled, onShowQr, startOrder, startCancelFlow }) {
   const waitingTickets = tickets.filter((ticket) => !ticket.cancelled && ticket.scheduled_time - now > 0);
   const alertTickets = tickets.filter((ticket) => ticket.cancelled || ticket.scheduled_time - now <= 0);
 
@@ -575,7 +624,13 @@ function IdleView({ t, lang, tickets, now, pickUp, dismissCancelled, startOrder,
     const preparing = remaining < 60000;
     const statusLabel = preparing ? t.preparing : `${formatMinutes(remaining, lang)} ${t.leftTime}`;
     return (
-      <div key={ticket.id} className="tq-tile">
+      <div
+        key={ticket.id}
+        className="tq-tile"
+        onClick={() => onShowQr(ticket)}
+        style={{ cursor: 'pointer' }}
+        title="Takip QR kodunu tekrar göstermek için dokun"
+      >
         <div className="n">{ticket.code}</div>
         {ticket.first_name && (
           <div className="s">{ticket.first_name} {ticket.last_name}</div>

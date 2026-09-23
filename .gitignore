@@ -23,8 +23,13 @@ frontend-react/client-mode.env
 # (büyük, üçüncü parti, kaynak değil — gerekirse README'deki adımlarla
 # yeniden indirilir)
 backend/libs/
+# yanlışlıkla oluşmuş/commit edilmiş bir venv (backend hiçbir zaman pip
+# bağımlılığı kullanmadı — server.py stdlib-only, kod incelemesiyle
+# doğrulandı)
+backend/venv/
 
 # --- editör ---
 .vscode/
 .idea/
 .aider*
+*.deb

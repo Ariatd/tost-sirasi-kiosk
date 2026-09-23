@@ -55,7 +55,8 @@ app.setName("tost-kiosk-client");
 
 // ---------------------------------------------------------------------
 // Backend adresi — HARDCODED DEĞİL. Sırasıyla:
-//   1) TOST_BACKEND_URL ortam değişkeni (run.sh / systemd Environment=)
+//   1) TOST_BACKEND_URL ortam değişkeni (systemd Environment= / elle export;
+//      run.sh eski AppImage dağıtımından kalma, .deb ile artık KULLANILMIYOR)
 //   2) ~/.config/tost-kiosk-client/config.env dosyası (TOST_BACKEND_URL=…)
 //      — .deb kurulumundan menüden açılışta bu kullanılır. Dosya yoksa
 //      İLK açılışta varsayılan değerle OLUŞTURULUR, böylece kurulumu
@@ -96,8 +97,6 @@ function resolveBackendUrl() {
 
 const BACKEND_URL = resolveBackendUrl().replace(/\/+$/, "");
 const CH340_VENDOR_ID = "1a86"; // QinHeng Electronics
-let resetStarted = false;
-let resetFinished = false;
 
 let serialPort = null;
 let serialBuf = Buffer.alloc(0);
@@ -136,39 +135,6 @@ function postCardScan(cardId, rawHex) {
   req.on("error", (e) => console.error("[client-mode] backend istegi basarisiz:", e.message));
   req.write(data);
   req.end();
-}
-
-function resetBackendState() {
-  if (!BACKEND_URL) return Promise.resolve();
-  return new Promise((resolve) => {
-    let url;
-    try {
-      url = new URL(BACKEND_URL + "/api/dev/reset");
-    } catch (_) {
-      resolve();
-      return;
-    }
-    const req = http.request(
-      {
-        hostname: url.hostname,
-        port: url.port || 80,
-        path: url.pathname,
-        method: "POST",
-        headers: { "Content-Length": 0 },
-        timeout: 2000,
-      },
-      (res) => {
-        res.resume();
-        res.on("end", resolve);
-      }
-    );
-    req.on("timeout", () => {
-      req.destroy();
-      resolve();
-    });
-    req.on("error", resolve);
-    req.end();
-  });
 }
 
 // ---------------------------------------------------------------------
@@ -297,13 +263,12 @@ async function boot() {
       "&title=" + encodeURIComponent("Backend adresi ayarlanmamış") +
       "&detail=" + encodeURIComponent(
         "TOST_BACKEND_URL ortam değişkeni ayarlanmadan Client Mode başlatılamaz. " +
-        "run.sh içindeki TOST_BACKEND_URL değerini kontrol edin."
+        "~/.config/tost-kiosk-client/config.env dosyasındaki TOST_BACKEND_URL değerini kontrol edin."
       )
     );
     return;
   }
 
-  await resetBackendState();
   createWindow();
   const started = await tryStartReaderThenApp();
   if (!started) loadNoReaderScreen("");
@@ -426,17 +391,6 @@ ipcMain.handle("tost:applyUpdate", (event, downloadUrl, version) => {
   })();
 
   return { ok: true, started: true };
-});
-
-app.on("before-quit", (event) => {
-  if (resetFinished) return;
-  event.preventDefault();
-  if (resetStarted) return;
-  resetStarted = true;
-  resetBackendState().finally(() => {
-    resetFinished = true;
-    app.quit();
-  });
 });
 
 app.whenReady().then(boot);

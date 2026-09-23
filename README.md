@@ -183,22 +183,31 @@ bölümüne bakın — Node kurmadan, Docker ile derlenir.
 
 ### Mobil Canlı Takip & Cloudflare Tunnel (systemd)
 
-Mobil takibin kullanıcının hücresel verisinde kesintisiz çalışması ve
-terminal kapatılsa bile ayakta kalması için Cloudflare tüneli kalıcı bir
-systemd kullanıcı servisi olarak yapılandırılmıştır:
+Mobil takip **tek kuruş harcamadan**, ücretsiz Cloudflare **Quick Tunnel**
+üzerinden çalışır. Quick Tunnel'ın tek dezavantajı adresin her yeniden
+başlatmada değişmesi — bu yüzden URL hiçbir yerde hardcode edilmez: backend,
+cloudflared'ın `--metrics` ucundaki `/quicktunnel` JSON'undan **o anki gerçek
+adresi her seferinde canlı okur** ve SSE ile panele iletir; QR kodları her
+zaman taze adresle üretilir. Tünel kesilip cloudflared kendini yeniden
+başlattığında (`Restart=always`) yeni adres birkaç saniye içinde otomatik
+yansır, hiçbir elle müdahale gerekmez.
+
+Kalıcı bir systemd kullanıcı servisi olarak kurmak için:
 
 ```bash
 mkdir -p ~/.config/systemd/user
 
 cat << 'EOF' > ~/.config/systemd/user/cloudflared-tunnel.service
 [Unit]
-Description=Cloudflare Tunnel for Tost Kiosk
+Description=Cloudflare Tunnel for Tost Kiosk (mobil QR takip için public erişim)
 After=network-online.target
 Wants=network-online.target
 
 [Service]
 Type=simple
-ExecStart=/usr/bin/cloudflared tunnel --protocol http2 --url http://localhost:3000
+# Port 8080 = backend/server.py (hem API hem frontend-react/dist tek origin'den).
+# --metrics: backend'in /quicktunnel'dan o anki tünel adresini okuyabilmesi için.
+ExecStart=/usr/local/bin/cloudflared tunnel --protocol http2 --url http://localhost:8080 --metrics localhost:20241
 Restart=always
 RestartSec=5
 
@@ -210,11 +219,26 @@ systemctl --user daemon-reload
 systemctl --user enable --now cloudflared-tunnel.service
 ```
 
+`cloudflared`'ın kurulu yolu farklıysa (`which cloudflared`) `ExecStart`'ı ona
+göre düzeltin; backend de farklı bir metrics portu/host'u kullanıyorsa
+`TUNNEL_METRICS_URL` ortam değişkeniyle override edilebilir (bkz. `server.py`).
+
 Mobil takip arayüzü (`MobileTrackView.jsx`), kiosk ekranındaki onay görünümünde
-oluşturulan `https://<tunnel-url>/?track=<KOD>&until=<TIMESTAMP>` bağlantısını
-işler. Kalan süre milisaniyelik zaman damgası farkıyla saniyede bir taranarak
-ekranda `04:59` formatında canlı akar; süre dolduğunda otomatik olarak
-"TOSTUNUZ HAZIR!" arayüzüne geçer.
+oluşturulan `https://<tunnel-url>/?track=<KOD>&id=<BILET_ID>&until=<TIMESTAMP>`
+bağlantısını işler. İlk açılışta `until` parametresinden anlık, offline bir
+geri sayımla çizilir (tünele bile gerek kalmadan); ardından `id` ile
+`GET /api/ticket-status?id=` ucunu 4 sn'de bir yoklayarak biletin **gerçek**
+durumunu gösterir:
+
+- **Hazır** — süre dolduğunda "TOSTUNUZ HAZIR!" kartına kilitlenir.
+- **İptal edildi** — sipariş panelden/admin'den iptal edilirse telefon da
+  aynı anda "İptal Edildi" durumuna geçer (geri sayım durur).
+- **Teslim alındı** — kart panelde okutulup teslim onaylanınca yansır.
+
+Bu sayede mobil taraf hem çevrimdışı dayanıklı (anlık geri sayım hiçbir ağa
+bağlı değil) hem de gerçek zamanlı doğru (iptal/hazır durumları sunucudan
+teyit edilir) — ikisi arasında yarış durumu yok, polling ilk anlık tahmini
+her zaman gerçek durumla ezer.
 
 ### Client Mode masaüstü paketi (.deb)
 
@@ -228,8 +252,8 @@ Kendi bilgisayarınızda derlemenize gerek yok — GitHub Release'den doğrudan
 indirip kurabilirsiniz (panel PC dahil, SCP/dosya yoluna bağımlı kalmadan):
 
 ```bash
-wget https://github.com/Ariatd/tost-sirasi-kiosk/releases/download/v2.2.12/tost-kiosk-client_2.2.12_amd64.deb
-sudo apt install --reinstall ./tost-kiosk-client_2.2.12_amd64.deb
+wget https://github.com/Ariatd/tost-sirasi-kiosk/releases/download/v2.2.20/tost-kiosk-client_2.2.20_amd64.deb
+sudo apt install --reinstall ./tost-kiosk-client_2.2.20_amd64.deb
 ```
 
 Kurulunca uygulama menüsünde **"Tost Sırası - Client"** olarak görünür;
@@ -272,7 +296,41 @@ Servis dosyası `/usr/bin/tost-kiosk-client`'ı (update-alternatives ile
 `.deb`'in kurduğu gerçek ikiliye bağlı) `--disable-gpu
 --disable-software-rasterizer` ile çalıştırır ve `NO_AT_BRIDGE=1` ortam
 değişkenini ayarlar — panelde tespit edilen iki kararlılık sorununu
-giderir (bkz. [Bilinen kısıtlar](#bilinen-kısıtlar)).
+giderir (bkz. [Bilinen kısıtlar](#bilinen-kısıtlar)). `Restart=always` ile
+uygulama beklenmedik şekilde kapanırsa (çökme, elektrik kesintisi) kendini
+otomatik olarak yeniden başlatır.
+
+#### Uygulama içinden tek-tık güncelleme (OTA)
+
+Panele gidip elle `wget`/`apt install` çalıştırmak zorunda kalmamak için
+Ayarlar ekranında bir **"Güncelle"** butonu vardır:
+
+1. Açılışta ve Ayarlar ekranı her açıldığında uygulama GitHub'ın
+   `releases/latest` API'sini kontrol eder; kurulu sürümden daha yeni bir
+   sürüm varsa buton belirir (`vX.Y.Z` etiketiyle).
+2. Tıklanınca `.deb` dosyasını **gerçek bayt bazlı ilerleme çubuğuyla**
+   indirir — indirme sürerken Ayarlar'dan çıkıp başka bir ekrana geçilse
+   bile indirme arka planda (Electron ana sürecinde) devam eder; Ayarlar'a
+   geri dönüldüğünde kaldığı yerden ilerleme gösterilir.
+3. İndirme bitince `sudo /usr/local/bin/kiosk-update.sh <indirilen .deb>`
+   çalıştırılır — bu script `apt-get install --reinstall` ile paketi kurar
+   ve `tost-kiosk-electron.service`'i otomatik yeniden başlatır.
+
+Bunun çalışabilmesi için panelde **bir kerelik** kurulum gerekir (script +
+şifresiz `sudo` izni):
+
+```bash
+sudo cp frontend-react/deploy/kiosk-update.sh /usr/local/bin/kiosk-update.sh
+sudo chmod +x /usr/local/bin/kiosk-update.sh
+# <KULLANICI_ADI> yerine panelin gerçek oturum kullanıcısını yazın (ör. botek):
+echo '<KULLANICI_ADI> ALL=(ALL) NOPASSWD: /usr/local/bin/kiosk-update.sh' | \
+  sudo tee /etc/sudoers.d/kiosk-update
+sudo chmod 440 /etc/sudoers.d/kiosk-update
+```
+
+(`frontend-react/deploy/kiosk-update.sudoers` bu satırın hazır bir şablonunu
+içerir.) Bu izin **yalnızca** bu tek scripti şifresiz çalıştırmaya izin
+verir — genel bir `sudo` yetkisi vermez.
 
 #### Kendi paketinizi derlemek
 
@@ -314,17 +372,38 @@ bloke/dolu basamakları atlaması.
 
 ### Admin aracı (kendi bilgisayarınızda)
 
+Backend artık geliştiricinin kendi bilgisayarında çalıştığı için admin aracı
+da **aynı makinede** çalıştırılır — varsayılan adres zaten `127.0.0.1:8080`,
+ekstra bir ayar gerekmez:
+
 ```bash
 sudo apt install python3-tk    # yalnızca ilk sefer (bazı Ubuntu kurulumlarında
                                 # ayrı paket; apt kırık görünüyorsa .deb'leri
                                 # elle indirip `dpkg -i` ile kurun)
-TOST_ADMIN_TOKEN=<panelden alınan token> python3 admin-tool/tost-admin.py
+TOST_ADMIN_TOKEN=<backend/admin_token dosyasındaki değer> python3 admin-tool/tost-admin.py
 ```
 
-Token, panelde `~/tost-kiosk/admin_token` dosyasındadır (ilk açılışta rastgele
-üretilir, `.gitignore`'da — depoya **girmez**). Araç biletleri, kayıtlı
-kullanıcıları ve ham kart okumalarını 5 sn'de bir yeniler; silme/sıfırlama
-`X-Admin-Token` başlığıyla korunan uçları kullanır.
+Token, backend'in çalıştığı makinede `backend/admin_token` dosyasındadır (ilk
+açılışta rastgele üretilir, `.gitignore`'da — depoya **girmez**; ayrıca
+`journalctl --user -u tost-kiosk-backend.service` çıktısının başında da
+loglanır). Backend başka bir makinede/porttaysa `TOST_ADMIN_URL=http://...`
+ile override edilebilir.
+
+Araç 5 sn'de bir otomatik yenilenir ve **tam kontrol** sağlar:
+
+- **Menü & Stok** — hangi ürünlerin "tükendi" gösterileceğini işaretleme.
+- **Biletler** — tüm alanları (kod, hazır olma saati, ürünler, puan,
+  teslim/iptal durumu) elle düzenleme veya bileti tamamen silme.
+- **Kullanıcılar** — ad/soyad, bakiye, aylık kota, kota yenileme tarihi,
+  engelli durumu üzerinde tam düzenleme; "🔄 Limiti Şimdi Yenile" ile bir
+  kullanıcının kotasını istenilen anda sıfırlama.
+- **Hesap Kapatma Talepleri** — bekleyen talepleri görüntüleme/çözümleme.
+- **Kart Okuma Geçmişi** — ham kart okuma kayıtlarını inceleme.
+- **Test paneli anahtarı** — panelin sağ üst köşesindeki "test" butonunu
+  (zaman ilerletme / sıfırlama) admin'den açıp kapatma (bkz. aşağıdaki not).
+
+Tüm yazma işlemleri `X-Admin-Token` başlığıyla korunan `/api/admin/*` uçlarını
+kullanır; panelin kendisi hiçbir admin ucuna dokunmaz.
 
 ## Deploy
 
@@ -343,8 +422,7 @@ journalctl --user -u tost-kiosk-backend.service -f   # canlı log
 
 ### Client Mode (frontend-react) değiştiyse (panel PC)
 
-1. `frontend-react/package.json`'da `version`'ı artırın (ör. `2.2.11` → `2.2.12`)
-   ve `run.sh`'daki `APPIMAGE=` satırını buna göre güncelleyin.
+1. `frontend-react/package.json`'da `version`'ı artırın (ör. `2.2.19` → `2.2.20`).
 2. [Kendi paketinizi derlemek](#kendi-paketinizi-derlemek) bölümündeki
    Docker komutlarıyla yeni `.deb`/AppImage'ı üretin.
 3. Yeni sürümü bir GitHub Release'e asset olarak ekleyin:

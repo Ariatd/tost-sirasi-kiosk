@@ -1,10 +1,11 @@
 #!/bin/bash
 # Tost Sırası — Client Mode OTA güncelleme betiği.
 #
-# electron/main.cjs'teki "tost:applyUpdate" IPC handler'ı bunu
-# `sudo /usr/local/bin/kiosk-update.sh <deb-url>` olarak çağırır (Ayarlar
-# ekranındaki "Güncelle" butonu → GitHub Release'den .deb indirir, kurar,
-# kiosk servisini yeniden başlatır).
+# electron/main.cjs'teki "tost:applyUpdate" IPC handler'ı bunu çağırır:
+# main.cjs artık .deb'i KENDİSİ indirir (ilerleme yüzdesini Ayarlar
+# ekranına canlı yayınlamak için), bu betiğe sadece YEREL dosya yolunu
+# verir. Elle/manuel kullanım için doğrudan bir URL de verilebilir —
+# o zaman indirmeyi bu betik yapar (eski davranış, geriye dönük uyumlu).
 #
 # Kurulum (bu makinede / panelde, bir kere):
 #   sudo cp deploy/kiosk-update.sh /usr/local/bin/kiosk-update.sh
@@ -14,15 +15,23 @@
 #   sudo visudo -c
 set -euo pipefail
 
-URL="${1:?Kullanım: kiosk-update.sh <deb-url>}"
-TMPDEB="$(mktemp --suffix=.deb)"
-trap 'rm -f "$TMPDEB"' EXIT
+SRC="${1:?Kullanım: kiosk-update.sh <yerel .deb yolu | deb-url>}"
 
-echo "[kiosk-update] İndiriliyor: $URL"
-wget -q -O "$TMPDEB" "$URL"
+if [[ "$SRC" == /* ]] && [ -f "$SRC" ]; then
+  # Zaten indirilmiş yerel dosya (main.cjs'in normal kullanım şekli).
+  DEB="$SRC"
+  CLEANUP=0
+else
+  # URL — kendimiz indiriyoruz (manuel/CLI kullanım).
+  DEB="$(mktemp --suffix=.deb)"
+  CLEANUP=1
+  echo "[kiosk-update] İndiriliyor: $SRC"
+  wget -q -O "$DEB" "$SRC"
+fi
+[ "$CLEANUP" = 1 ] && trap 'rm -f "$DEB"' EXIT
 
-echo "[kiosk-update] Kuruluyor..."
-apt-get install -y --reinstall "$TMPDEB"
+echo "[kiosk-update] Kuruluyor: $DEB"
+apt-get install -y --reinstall "$DEB"
 
 # Bu betik root olarak (sudo ile) çalışıyor; kiosk'u çalıştıran gerçek
 # kullanıcının systemd --user oturumuna erişip servisi yeniden başlatmak

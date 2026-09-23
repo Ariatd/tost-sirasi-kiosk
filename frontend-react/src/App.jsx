@@ -1275,12 +1275,34 @@ function RegisterSuccessView({ t, user, card, onOrder, onHome }) {
 }
 
 function SettingsView({ t, brightness, setBrightness, nativeReady, connected, onProfile, onHome }) {
-  const [updating, setUpdating] = useState(false);
-  const [updateMsg, setUpdateMsg] = useState('');
+  // updateState ana süreçte (Electron) tutuluyor — bu ekrandan çıkıp geri
+  // dönsek bile indirme arka planda devam ediyor, burada sadece o anki
+  // durumu (yüzde dahil) gösteriyoruz.
+  const [updateState, setUpdateState] = useState({
+    phase: 'idle', progress: 0, downloadedBytes: 0, totalBytes: 0, error: null,
+  });
   const [latestVersion, setLatestVersion] = useState(null);
   const [downloadUrl, setDownloadUrl] = useState('');
   const [checkingUpdate, setCheckingUpdate] = useState(false);
   const [currentVersion, setCurrentVersion] = useState('2.2.14');
+
+  useEffect(() => {
+    let active = true;
+
+    if (window.tostNative?.getUpdateState) {
+      window.tostNative.getUpdateState().then((s) => {
+        if (active && s) setUpdateState(s);
+      });
+    }
+    const unsubscribe = window.tostNative?.onUpdateProgress
+      ? window.tostNative.onUpdateProgress((s) => active && setUpdateState(s))
+      : null;
+
+    return () => {
+      active = false;
+      if (unsubscribe) unsubscribe();
+    };
+  }, []);
 
   useEffect(() => {
     let active = true;
@@ -1323,22 +1345,23 @@ function SettingsView({ t, brightness, setBrightness, nativeReady, connected, on
 
   const hasUpdate = Boolean(isNewerVersion(latestVersion, currentVersion) && downloadUrl);
 
+  const updating = updateState.phase === 'downloading' || updateState.phase === 'installing';
+
   async function handleUpdate() {
     if (!hasUpdate || !downloadUrl || !window.tostNative?.applyUpdate) return;
-    setUpdating(true);
-    setUpdateMsg(`v${latestVersion} indiriliyor ve kuruluyor…`);
     try {
-      const res = await window.tostNative.applyUpdate(downloadUrl);
+      const res = await window.tostNative.applyUpdate(downloadUrl, latestVersion);
       if (!res.ok) {
-        setUpdateMsg('Hata: ' + (res.error || 'Bilinmeyen hata'));
-        setUpdating(false);
-      } else {
-        setUpdateMsg('Başarılı! Yeniden başlatılıyor…');
+        setUpdateState((s) => ({ ...s, phase: 'error', error: res.error || 'Bilinmeyen hata' }));
       }
+      // Başarılıysa gerçek durum zaten tost:updateProgress olaylarıyla geliyor.
     } catch (e) {
-      setUpdateMsg('Hata: ' + e.message);
-      setUpdating(false);
+      setUpdateState((s) => ({ ...s, phase: 'error', error: e.message }));
     }
+  }
+
+  function fmtMB(bytes) {
+    return (bytes / (1024 * 1024)).toFixed(1);
   }
 
   return (
@@ -1381,32 +1404,73 @@ function SettingsView({ t, brightness, setBrightness, nativeReady, connected, on
               </span>
             </div>
 
-            <button 
-              className="tq-confirm-btn" 
-              disabled={!hasUpdate || updating || !nativeReady} 
-              onClick={handleUpdate}
-              style={{
-                background: updating 
-                  ? '#475569' 
-                  : hasUpdate 
-                    ? '#059669' 
-                    : 'rgba(255,255,255,0.06)',
-                borderColor: hasUpdate ? '#10b981' : 'rgba(255,255,255,0.15)',
-                color: hasUpdate ? '#fff' : '#64748b',
-                cursor: (hasUpdate && !updating) ? 'pointer' : 'default',
-                marginTop: 8
-              }}
-            >
-              {updating 
-                ? t.downloadingAndInstalling 
-                : hasUpdate 
-                  ? `${t.downloadAndInstall} (v${latestVersion})` 
+            {!updating && updateState.phase !== 'done' && (
+              <button
+                className="tq-confirm-btn"
+                disabled={!hasUpdate || !nativeReady}
+                onClick={handleUpdate}
+                style={{
+                  background: hasUpdate ? '#059669' : 'rgba(255,255,255,0.06)',
+                  borderColor: hasUpdate ? '#10b981' : 'rgba(255,255,255,0.15)',
+                  color: hasUpdate ? '#fff' : '#64748b',
+                  cursor: hasUpdate ? 'pointer' : 'default',
+                  marginTop: 8
+                }}
+              >
+                {hasUpdate
+                  ? `${t.downloadAndInstall} (v${latestVersion})`
                   : `${t.systemUpToDate} (v${currentVersion})`}
-            </button>
+              </button>
+            )}
 
-            {updateMsg && (
-              <p className="tq-settings-note" style={{ color: updateMsg.includes('Hata') ? '#ef4444' : '#10b981', fontWeight: 600 }}>
-                {updateMsg}
+            {updateState.phase === 'downloading' && (
+              <div style={{ marginTop: 8 }}>
+                <div style={{
+                  display: 'flex', justifyContent: 'space-between', fontSize: 13,
+                  color: '#94a3b8', marginBottom: 4
+                }}>
+                  <span>İndiriliyor… %{updateState.progress}</span>
+                  {updateState.totalBytes > 0 && (
+                    <span>{fmtMB(updateState.downloadedBytes)} / {fmtMB(updateState.totalBytes)} MB</span>
+                  )}
+                </div>
+                <div style={{
+                  width: '100%', height: 10, borderRadius: 6,
+                  background: 'rgba(255,255,255,0.08)', overflow: 'hidden'
+                }}>
+                  <div style={{
+                    width: `${updateState.progress}%`, height: '100%',
+                    background: '#10b981', transition: 'width 0.3s ease',
+                    borderRadius: 6
+                  }} />
+                </div>
+              </div>
+            )}
+
+            {updateState.phase === 'installing' && (
+              <div style={{ marginTop: 8 }}>
+                <div style={{ fontSize: 13, color: '#94a3b8', marginBottom: 4 }}>Kuruluyor…</div>
+                <div className="tq-progress-indeterminate" style={{
+                  width: '100%', height: 10, borderRadius: 6,
+                  background: 'rgba(255,255,255,0.08)', overflow: 'hidden', position: 'relative'
+                }}>
+                  <div className="tq-progress-indeterminate-bar" style={{
+                    position: 'absolute', top: 0, bottom: 0, width: '40%',
+                    background: '#10b981', borderRadius: 6
+                  }} />
+                </div>
+              </div>
+            )}
+
+            {updateState.phase === 'done' && (
+              <p className="tq-settings-note" style={{ color: '#10b981', fontWeight: 600 }}>
+                Başarılı! Yeniden başlatılıyor…
+              </p>
+            )}
+
+            {updateState.phase === 'error' && (
+              <p className="tq-settings-note" style={{ color: '#ef4444', fontWeight: 600 }}>
+                Hata: {updateState.error}
               </p>
             )}
           </div>

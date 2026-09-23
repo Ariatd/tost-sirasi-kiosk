@@ -21,6 +21,7 @@ const path = require("path");
 const fs = require("fs");
 const os = require("os");
 const http = require("http");
+const https = require("https");
 const { exec } = require("child_process");
 const { SerialPort } = require("serialport");
 const { parseFrames, em4100Core } = require("./serial-parser.cjs");
@@ -317,24 +318,114 @@ ipcMain.handle("tost:quit", () => app.quit());
 ipcMain.handle("tost:retryReaderScan", () => tryStartReaderThenApp());
 ipcMain.handle("tost:getVersion", () => app.getVersion());
 
-// OTA Güncelleme: GitHub'dan gelen downloadUrl adresini betiğe iletir
-ipcMain.handle("tost:applyUpdate", (event, downloadUrl) => {
-  return new Promise((resolve) => {
-    if (!downloadUrl) {
-      resolve({ ok: false, error: "İndirme bağlantısı (URL) eksik." });
-      return;
-    }
-    console.log("[OTA] Güncelleme betiği başlatılıyor. URL:", downloadUrl);
-    exec(`sudo /usr/local/bin/kiosk-update.sh "${downloadUrl}"`, (error, stdout, stderr) => {
-      if (error) {
-        console.error("[OTA] Hata:", stderr || error.message);
-        resolve({ ok: false, error: stderr || error.message });
-      } else {
-        console.log("[OTA] Başarılı:", stdout);
-        resolve({ ok: true });
-      }
-    });
+// ---------------------------------------------------------------------
+// OTA Güncelleme — gerçek bayt bazlı indirme ilerlemesi + kalıcı durum.
+//
+// updateState ana süreçte (React bileşenlerinin yaşam döngüsünden BAĞIMSIZ)
+// tutuluyor: kullanıcı Ayarlar ekranından çıkıp başka bir ekrana geçse bile
+// indirme arka planda devam ediyor; ekrana geri dönünce getUpdateState()
+// ile kaldığı yerden (yüzde dahil) senkronize oluyor.
+// ---------------------------------------------------------------------
+let updateState = {
+  phase: "idle", // idle | downloading | installing | done | error
+  progress: 0,
+  downloadedBytes: 0,
+  totalBytes: 0,
+  error: null,
+  version: null,
+};
+
+function setUpdateState(patch) {
+  updateState = { ...updateState, ...patch };
+  win?.webContents.send("tost:updateProgress", updateState);
+}
+
+function downloadWithProgress(url, destPath, onProgress, redirectsLeft = 5) {
+  return new Promise((resolve, reject) => {
+    https
+      .get(url, { headers: { "User-Agent": "tost-kiosk-client" } }, (res) => {
+        if ([301, 302, 303, 307, 308].includes(res.statusCode)) {
+          res.resume();
+          if (redirectsLeft <= 0 || !res.headers.location) {
+            reject(new Error("Çok fazla yönlendirme"));
+            return;
+          }
+          downloadWithProgress(res.headers.location, destPath, onProgress, redirectsLeft - 1).then(
+            resolve,
+            reject
+          );
+          return;
+        }
+        if (res.statusCode !== 200) {
+          res.resume();
+          reject(new Error(`İndirme başarısız: HTTP ${res.statusCode}`));
+          return;
+        }
+        const total = parseInt(res.headers["content-length"] || "0", 10);
+        let downloaded = 0;
+        const fileStream = fs.createWriteStream(destPath);
+        res.on("data", (chunk) => {
+          downloaded += chunk.length;
+          onProgress(downloaded, total);
+        });
+        res.pipe(fileStream);
+        fileStream.on("finish", () => fileStream.close(() => resolve()));
+        fileStream.on("error", reject);
+        res.on("error", reject);
+      })
+      .on("error", reject);
   });
+}
+
+ipcMain.handle("tost:getUpdateState", () => updateState);
+
+// GitHub'dan gelen downloadUrl'i indirir (ilerleme yayınlayarak), sonra
+// kiosk-update.sh'a YEREL dosya yolunu vererek kurdurur (betik artık
+// kendisi indirmiyor — main.cjs'in indirdiği dosyayı kuruyor).
+ipcMain.handle("tost:applyUpdate", (event, downloadUrl, version) => {
+  if (updateState.phase === "downloading" || updateState.phase === "installing") {
+    return { ok: true, alreadyInProgress: true };
+  }
+  if (!downloadUrl) {
+    return { ok: false, error: "İndirme bağlantısı (URL) eksik." };
+  }
+
+  const destPath = path.join(os.tmpdir(), "tost-kiosk-update.deb");
+  setUpdateState({
+    phase: "downloading",
+    progress: 0,
+    downloadedBytes: 0,
+    totalBytes: 0,
+    error: null,
+    version: version || null,
+  });
+
+  (async () => {
+    try {
+      console.log("[OTA] İndiriliyor:", downloadUrl);
+      await downloadWithProgress(downloadUrl, destPath, (downloaded, total) => {
+        const progress = total > 0 ? Math.min(99, Math.round((downloaded / total) * 100)) : 0;
+        setUpdateState({ progress, downloadedBytes: downloaded, totalBytes: total });
+      });
+      console.log("[OTA] İndirme tamam, kuruluyor:", destPath);
+      setUpdateState({ phase: "installing", progress: 100 });
+      await new Promise((resolve, reject) => {
+        exec(`sudo /usr/local/bin/kiosk-update.sh "${destPath}"`, (error, stdout, stderr) => {
+          if (error) reject(new Error(stderr || error.message));
+          else resolve(stdout);
+        });
+      });
+      console.log("[OTA] Kurulum tamam.");
+      setUpdateState({ phase: "done", progress: 100 });
+    } catch (e) {
+      console.error("[OTA] Hata:", e.message);
+      setUpdateState({ phase: "error", error: e.message });
+    } finally {
+      fs.unlink(destPath, () => {});
+    }
+  })();
+
+  return { ok: true, started: true };
 });
 
 app.on("before-quit", (event) => {

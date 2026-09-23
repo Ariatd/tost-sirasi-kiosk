@@ -131,3 +131,14 @@
   cursor: not-allowed;
   box-shadow: none;
 }
+
+/* OTA güncelleme: kurulum aşaması için belirsiz (indeterminate) ilerleme
+   çubuğu — yüzde bilinmiyor (apt install net bir ilerleme vermiyor),
+   sağa sola kayan bir bar ile "devam ediyor" hissi veriyoruz. */
+@keyframes tq-progress-slide {
+  0% { left: -40%; }
+  100% { left: 100%; }
+}
+.tq-progress-indeterminate-bar {
+  animation: tq-progress-slide 1.2s ease-in-out infinite;
+}

@@ -7,8 +7,14 @@ contextBridge.exposeInMainWorld('tostNative', {
   toggleFullscreen: () => ipcRenderer.invoke('tost:toggleFullscreen'),
   quit: () => ipcRenderer.invoke('tost:quit'),
   retryReaderScan: () => ipcRenderer.invoke('tost:retryReaderScan'),
-  applyUpdate: (downloadUrl) => ipcRenderer.invoke('tost:applyUpdate', downloadUrl),
+  applyUpdate: (downloadUrl, version) => ipcRenderer.invoke('tost:applyUpdate', downloadUrl, version),
   getVersion: () => ipcRenderer.invoke('tost:getVersion'),
+  getUpdateState: () => ipcRenderer.invoke('tost:getUpdateState'),
+  onUpdateProgress: (cb) => {
+    const listener = (_event, state) => cb(state);
+    ipcRenderer.on('tost:updateProgress', listener);
+    return () => ipcRenderer.removeListener('tost:updateProgress', listener);
+  },
 });
 
 window.dispatchEvent(new Event('tostnativeready'));

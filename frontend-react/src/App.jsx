@@ -390,30 +390,18 @@ export default function App() {
     setView('confirm');
   }
 
-  // Test paneli: admin token'ı içeren istekleri asla bu genel JS paketinden
-  // atmıyoruz — Electron ana sürecine (main.cjs, config.env'deki
-  // TOST_ADMIN_TOKEN'ı bilen tek yer) IPC ile devrediyoruz. Electron
-  // dışında (ör. tarayıcıda geliştirme) bu köprü yoksa buton hata verir.
   async function devAdvance() {
-    if (!window.tostNative?.devAdvance) {
-      window.alert('Bu özellik yalnızca paketlenmiş uygulamada çalışır.');
-      return;
-    }
-    const r = await window.tostNative.devAdvance();
-    if (!r.ok) window.alert(r.error || 'Test zamanı ilerletilemedi');
+    const r = await api('/api/dev/advance', { minutes: 5 });
+    if (!r.ok) window.alert(r.data.error || 'Test zamanı ilerletilemedi');
   }
 
   async function devReset() {
-    if (!window.tostNative?.devReset) {
-      window.alert('Bu özellik yalnızca paketlenmiş uygulamada çalışır.');
-      return;
-    }
-    const r = await window.tostNative.devReset();
+    const r = await api('/api/dev/reset', {});
     if (r.ok) {
       setTickets([]);
       goHome();
     } else {
-      window.alert(r.error || 'Test sıfırlanamadı');
+      window.alert(r.data.error || 'Test sıfırlanamadı');
     }
   }
 

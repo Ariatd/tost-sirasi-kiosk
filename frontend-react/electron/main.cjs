@@ -85,13 +85,7 @@ function resolveBackendUrl() {
           "# Bu değer SADECE kurulumu yapan kişinin kendi ağında (varsayılan:\n" +
           "# geliştiricinin ev ağı) çalışır. Kendi backend'inizi ayağa kaldırıp\n" +
           "# buraya kendi IP'nizi yazın, sonra uygulamayı yeniden başlatın.\n" +
-          `TOST_BACKEND_URL=${DEFAULT_BACKEND_URL}\n` +
-          "\n" +
-          "# (Opsiyonel) Test panelindeki \"+5 dk\"/\"Sıfırla\" butonlarının\n" +
-          "# çalışması için backend'deki admin_token dosyasının içeriğini\n" +
-          "# buraya yazın (backend/admin_token). Yoksa o iki buton hata verir,\n" +
-          "# uygulamanın geri kalanı etkilenmez.\n" +
-          "# TOST_ADMIN_TOKEN=\n"
+          `TOST_BACKEND_URL=${DEFAULT_BACKEND_URL}\n`
       );
     } catch (e) {
       console.error("[client-mode] config.env olusturulamadi:", e.message);
@@ -101,30 +95,6 @@ function resolveBackendUrl() {
 }
 
 const BACKEND_URL = resolveBackendUrl().replace(/\/+$/, "");
-
-// Test panelindeki "+5 dk" / "Sıfırla" butonları backend'in /api/dev/*
-// uçlarını çağırıyor — bu uçlar artık (tünel ile genel internete açık
-// olduğu için) admin token istiyor. Token'ı renderer'a (herkese açık JS
-// paketine) HİÇ koymuyoruz; sadece bu güvenilir ana süreç config.env'den
-// okuyup istekleri kendisi atıyor (bkz. tost:devAdvance/tost:devReset).
-// Aynı config.env dosyasına TOST_ADMIN_TOKEN=... satırı eklenerek
-// ayarlanır; yoksa bu iki buton çalışmaz (ama uygulamanın geri kalanı
-// etkilenmez).
-function resolveAdminToken() {
-  if (process.env.TOST_ADMIN_TOKEN && process.env.TOST_ADMIN_TOKEN.trim()) {
-    return process.env.TOST_ADMIN_TOKEN.trim();
-  }
-  try {
-    const content = fs.readFileSync(CONFIG_FILE, "utf8");
-    const m = content.match(/^\s*TOST_ADMIN_TOKEN\s*=\s*(.+?)\s*$/m);
-    if (m && m[1]) return m[1].trim();
-  } catch (_) {
-    /* config.env yok - resolveBackendUrl zaten olusturdu/olusturacak */
-  }
-  return "";
-}
-
-const ADMIN_TOKEN = resolveAdminToken();
 const CH340_VENDOR_ID = "1a86"; // QinHeng Electronics
 let resetStarted = false;
 let resetFinished = false;
@@ -166,63 +136,6 @@ function postCardScan(cardId, rawHex) {
   req.on("error", (e) => console.error("[client-mode] backend istegi basarisiz:", e.message));
   req.write(data);
   req.end();
-}
-
-// Test panelinin "+5 dk"/"Sıfırla" butonları için — admin token'lı POST.
-// Token config.env'de yoksa (ADMIN_TOKEN boş) hemen hata döner, hiç
-// istek atmaz.
-function postAdminAction(pathname, body) {
-  return new Promise((resolve) => {
-    if (!ADMIN_TOKEN) {
-      resolve({ ok: false, error: "TOST_ADMIN_TOKEN ayarlanmamış (config.env)." });
-      return;
-    }
-    if (!BACKEND_URL) {
-      resolve({ ok: false, error: "Backend adresi ayarlanmamış." });
-      return;
-    }
-    const data = JSON.stringify(body || {});
-    let url;
-    try {
-      url = new URL(BACKEND_URL + pathname);
-    } catch (e) {
-      resolve({ ok: false, error: "Geçersiz backend adresi." });
-      return;
-    }
-    const req = http.request(
-      {
-        hostname: url.hostname,
-        port: url.port || 80,
-        path: url.pathname,
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "Content-Length": Buffer.byteLength(data),
-          "X-Admin-Token": ADMIN_TOKEN,
-        },
-        timeout: 5000,
-      },
-      (res) => {
-        let raw = "";
-        res.on("data", (c) => (raw += c));
-        res.on("end", () => {
-          if (res.statusCode >= 400) {
-            resolve({ ok: false, error: `Backend hata döndü: ${res.statusCode}` });
-          } else {
-            try {
-              resolve({ ok: true, data: JSON.parse(raw || "{}") });
-            } catch (_) {
-              resolve({ ok: true, data: {} });
-            }
-          }
-        });
-      }
-    );
-    req.on("timeout", () => req.destroy(new Error("zaman aşımı")));
-    req.on("error", (e) => resolve({ ok: false, error: e.message }));
-    req.write(data);
-    req.end();
-  });
 }
 
 function resetBackendState() {
@@ -404,10 +317,6 @@ ipcMain.handle("tost:toggleFullscreen", () => win?.setFullScreen(!win.isFullScre
 ipcMain.handle("tost:quit", () => app.quit());
 ipcMain.handle("tost:retryReaderScan", () => tryStartReaderThenApp());
 ipcMain.handle("tost:getVersion", () => app.getVersion());
-
-// Test paneli — admin token'ı hiç renderer'a vermeden burada ekliyoruz.
-ipcMain.handle("tost:devAdvance", () => postAdminAction("/api/dev/advance", { minutes: 5 }));
-ipcMain.handle("tost:devReset", () => postAdminAction("/api/dev/reset", {}));
 
 // ---------------------------------------------------------------------
 // OTA Güncelleme — gerçek bayt bazlı indirme ilerlemesi + kalıcı durum.

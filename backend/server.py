@@ -967,9 +967,11 @@ class Handler(BaseHTTPRequestHandler):
             emit_scan(cid, em, cid)
             return self._send_json({"ok": True, "card_id": cid})
 
+        # Kiosk'taki "test" panelinin butonları — kullanıcının açık isteğiyle
+        # token'sız bırakıldı (yalnızca zaman ilerletme + bilet/okuma
+        # silme; kullanıcı verisi silmiyor). Daha riskli olan reset-all ve
+        # scan admin token istemeye devam ediyor.
         if p == "/api/dev/advance":
-            if not self._admin_ok():
-                return
             global _time_offset_ms
             with _offset_lock:
                 _time_offset_ms += int(body.get("minutes", 0)) * 60 * 1000
@@ -977,8 +979,6 @@ class Handler(BaseHTTPRequestHandler):
             return self._send_json({"ok": True, "offset_ms": _time_offset_ms})
 
         if p == "/api/dev/reset":
-            if not self._admin_ok():
-                return
             with _offset_lock:
                 _time_offset_ms = 0
             execute("DELETE FROM tickets")

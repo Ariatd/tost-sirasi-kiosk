@@ -10,8 +10,6 @@ contextBridge.exposeInMainWorld('tostNative', {
   applyUpdate: (downloadUrl, version) => ipcRenderer.invoke('tost:applyUpdate', downloadUrl, version),
   getVersion: () => ipcRenderer.invoke('tost:getVersion'),
   getUpdateState: () => ipcRenderer.invoke('tost:getUpdateState'),
-  devAdvance: () => ipcRenderer.invoke('tost:devAdvance'),
-  devReset: () => ipcRenderer.invoke('tost:devReset'),
   onUpdateProgress: (cb) => {
     const listener = (_event, state) => cb(state);
     ipcRenderer.on('tost:updateProgress', listener);

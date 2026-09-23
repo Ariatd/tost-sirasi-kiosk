@@ -103,6 +103,7 @@ export default function App() {
   const [tickets, setTickets] = useState([]);
   const [tunnelUrl, setTunnelUrl] = useState(null);
   const [devOpen, setDevOpen] = useState(false);
+  const [testPanelEnabled, setTestPanelEnabled] = useState(true);
   const [outOfStock, setOutOfStock] = useState([]);
   const [clockSkew, setClockSkew] = useState(0);
   const [connected, setConnected] = useState(false);
@@ -210,6 +211,7 @@ export default function App() {
         setTickets(msg.tickets || []);
         if (msg.out_of_stock) setOutOfStock(msg.out_of_stock);
         setTunnelUrl(msg.tunnel_url || null);
+        if (typeof msg.test_panel_enabled === 'boolean') setTestPanelEnabled(msg.test_panel_enabled);
       },
       onScan: (msg) => {
         handleScan(msg);
@@ -222,6 +224,7 @@ export default function App() {
         setTickets(r.data.tickets || []);
         if (r.data.out_of_stock) setOutOfStock(r.data.out_of_stock);
         setTunnelUrl(r.data.tunnel_url || null);
+        if (typeof r.data.test_panel_enabled === 'boolean') setTestPanelEnabled(r.data.test_panel_enabled);
       }
     });
     return disconnect;
@@ -416,6 +419,7 @@ export default function App() {
         lang={lang}
         toggleLang={toggleLang}
         now={nowMs}
+        testPanelEnabled={testPanelEnabled}
         devOpen={devOpen}
         setDevOpen={setDevOpen}
         devAdvance={devAdvance}
@@ -533,7 +537,7 @@ export default function App() {
 // Topbar (Sade & Zarif Ortalanmış Saat)
 // =====================================================================
 
-function Topbar({ t, lang, toggleLang, now, devOpen, setDevOpen, devAdvance, devReset, nativeReady, connected, onSettings }) {
+function Topbar({ t, lang, toggleLang, now, testPanelEnabled, devOpen, setDevOpen, devAdvance, devReset, nativeReady, connected, onSettings }) {
   return (
     <>
       <div className="tq-topbar" style={{ display: 'grid', gridTemplateColumns: '1fr auto 1fr', alignItems: 'center' }}>
@@ -571,7 +575,9 @@ function Topbar({ t, lang, toggleLang, now, devOpen, setDevOpen, devAdvance, dev
             {lang === 'tr' ? '🇬🇧 EN' : '🇹🇷 TR'}
           </button>
 
-          <button className="tq-dev-btn" onClick={() => setDevOpen((v) => !v)}>test</button>
+          {testPanelEnabled && (
+            <button className="tq-dev-btn" onClick={() => setDevOpen((v) => !v)}>test</button>
+          )}
           <button className="tq-settings-btn" title={t.settings} aria-label={t.settings} onClick={onSettings}>⚙</button>
           {nativeReady && (
             <>
@@ -587,7 +593,7 @@ function Topbar({ t, lang, toggleLang, now, devOpen, setDevOpen, devAdvance, dev
           )}
         </div>
       </div>
-      {devOpen && (
+      {testPanelEnabled && devOpen && (
         <div className="tq-dev-panel">
           <div className="row">
             <button className="tq-chip" onClick={devAdvance}>+5 dk</button>

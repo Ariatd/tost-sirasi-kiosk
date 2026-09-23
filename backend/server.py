@@ -86,6 +86,13 @@ _last_scan_ts = 0.0
 _out_of_stock = set()
 _stock_lock = threading.Lock()
 
+# Kiosk'taki "test" panelinin (+5dk/Sıfırla) görünürlüğü — admin panelinden
+# canlı açılıp kapatılabilir (bkz. /api/admin/test-panel). out_of_stock ile
+# aynı desen: bellekte tutulur, SSE ile yayınlanır, backend yeniden
+# başladığında varsayılana (görünür) döner.
+_test_panel_enabled = True
+_test_panel_lock = threading.Lock()
+
 
 def now_ms() -> int:
     with _offset_lock:
@@ -305,6 +312,8 @@ def get_tunnel_url():
 def state_payload():
     with _stock_lock:
         cur_stock = list(_out_of_stock)
+    with _test_panel_lock:
+        test_panel = _test_panel_enabled
     return {
         "type": "state",
         "now": now_ms(),
@@ -312,6 +321,7 @@ def state_payload():
         "slot_ms": SLOT_MS,
         "tickets": active_tickets(),
         "out_of_stock": cur_stock,
+        "test_panel_enabled": test_panel,
     }
 
 
@@ -675,6 +685,7 @@ class Handler(BaseHTTPRequestHandler):
                     "size_bytes": os.path.getsize(DB_PATH) if os.path.isfile(DB_PATH) else 0,
                     "default_monthly_quota": DEFAULT_MONTHLY_QUOTA,
                 },
+                "test_panel_enabled": _test_panel_enabled,
             })
 
         return self._serve_static(p)
@@ -825,6 +836,20 @@ class Handler(BaseHTTPRequestHandler):
             broadcast_state()
             log(f"ADMIN: Stok güncellendi: {len(_out_of_stock)} ürün tükendi.")
             return self._send_json({"ok": True, "out_of_stock": list(_out_of_stock)})
+
+        # Admin: kiosk'taki "test" panelinin (+5dk/Sıfırla) görünürlüğü.
+        # Panel kapatıldığında buton kiosk'ta hiç render edilmiyor (dil
+        # butonu boşluğu otomatik dolduruyor) — arka planda /api/dev/* uçları
+        # hâlâ token'sız çağrılabilir durumda, bu sadece görünürlük anahtarı.
+        if p == "/api/admin/test-panel":
+            if not self._admin_ok():
+                return
+            global _test_panel_enabled
+            with _test_panel_lock:
+                _test_panel_enabled = bool(body.get("enabled"))
+            broadcast_state()
+            log(f"ADMIN: Test paneli {'açıldı' if _test_panel_enabled else 'kapatıldı'}.")
+            return self._send_json({"ok": True, "test_panel_enabled": _test_panel_enabled})
 
         # Admin: tekil bilet iptali — normal /api/order/cancel'dan farkı,
         # kart eşleşmesi ve "son 5 dk" kısıtlaması aranmaz (admin override),

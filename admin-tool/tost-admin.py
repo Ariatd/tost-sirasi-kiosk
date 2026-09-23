@@ -339,6 +339,8 @@ class AdminApp:
         style.configure("TLabelframe.Label", background=BG_DEEP, foreground=TEXT_MUTED)
         style.configure("TCheckbutton", background=BG_DEEP, foreground=TEXT)
         style.map("TCheckbutton", background=[("active", BG_DEEP)])
+        style.configure("Header.TCheckbutton", background=BG_SURFACE, foreground=TEXT)
+        style.map("Header.TCheckbutton", background=[("active", BG_SURFACE)])
 
         style.configure("Treeview", background=BG_SURFACE, fieldbackground=BG_SURFACE, foreground=TEXT,
                          rowheight=28, borderwidth=0, font=("TkDefaultFont", 10))
@@ -378,6 +380,12 @@ class AdminApp:
         right = tk.Frame(bar, bg=BG_SURFACE)
         right.pack(side="right")
         ttk.Button(right, text="↻ Yenile", style="Amber.TButton", command=self.refresh).pack(side="right")
+
+        self.test_panel_var = tk.BooleanVar(value=True)
+        ttk.Checkbutton(
+            right, text="Test paneli (kiosk)", variable=self.test_panel_var,
+            command=self.toggle_test_panel, style="Header.TCheckbutton"
+        ).pack(side="right", padx=(0, 16))
 
     def _build_statusbar(self):
         self.status_var = tk.StringVar(value="Hazır.")
@@ -448,6 +456,17 @@ class AdminApp:
         for v in self.stock_vars.values():
             v.set(False)
         self.push_stock_update()
+
+    def toggle_test_panel(self):
+        enabled = self.test_panel_var.get()
+        ok, res = api("POST", "/api/admin/test-panel", body={"enabled": enabled})
+        if ok:
+            self.set_status(
+                f"Kiosk'taki test paneli {'gösteriliyor' if enabled else 'gizlendi'}.", "ok"
+            )
+        else:
+            self.test_panel_var.set(not enabled)  # basarisizsa eski haline dondur
+            self.set_status(f"Test paneli değiştirilemedi: {res}", "error")
 
     # -----------------------------------------------------------------
     # Sekme: Biletler
@@ -835,6 +854,11 @@ class AdminApp:
             if dbi.get("path"):
                 size_kb = (dbi.get("size_bytes") or 0) / 1024
                 self.db_label.configure(text=f"📁 {dbi['path']}  ({size_kb:.0f} KB) — canlı veritabanı, bağımsız değil")
+
+            if "test_panel_enabled" in data:
+                # .set() Checkbutton'ın command'ını TETİKLEMEZ (sadece
+                # kullanıcı tıklamasında çalışır) — döngüye girme riski yok.
+                self.test_panel_var.set(bool(data["test_panel_enabled"]))
 
             self._render_tickets()
             self._render_users()

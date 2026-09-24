@@ -370,6 +370,32 @@ dolu+önizleme basamaklarının senkron azalması, basamağın zaman geçince ka
 5 dk altına düşen önizlemenin bloke olması ve "en yakın uygun saat" önerisinin
 bloke/dolu basamakları atlaması.
 
+### Staging (deneme ortamı)
+
+Şu ana kadar bu projede yalnızca iki aşama vardı: **geliştirme** (kendi
+bilgisayarınızda elle çalıştırdığınız backend) ve **production** (panel +
+`tost-kiosk-backend.service`). Yeni bir sürümü doğrudan production'a
+(panele) göndermeden önce son kez izole bir kopyada denemek isterseniz,
+`backend/Dockerfile` + `backend/deploy/run-staging.sh` bunun için var:
+
+```bash
+cd frontend-react && npm run build && cd ..   # dist güncel olsun
+./backend/deploy/run-staging.sh
+```
+
+Bu, gerçek backend'in **tam bir kopyasını** (aynı `server.py`, aynı statik
+dosyalar) Docker içinde, **ayrı bir portta** (varsayılan `8081`), **ayrı bir
+SQLite dosyasında** (Docker volume `tost-kiosk-staging-data` — production'ın
+`backend/kiosk.db`'siyle hiçbir ilgisi yok) ve **ayrı bir admin token'la**
+ayağa kaldırır. `http://localhost:8081` üzerinden `tost-admin.py` ile
+(`TOST_ADMIN_URL=http://localhost:8081`) ya da doğrudan `curl` ile production
+verisine hiç dokunmadan test edebilirsiniz. Bitince: `docker rm -f
+tost-kiosk-staging`.
+
+Bu, "stdlib-only" backend'in Docker'la ilk kez **çalıştırılmak** için
+paketlenmesi — projede Docker daha önce yalnızca Electron `.deb` **derlemek**
+için kullanılıyordu (bkz. [Kendi paketinizi derlemek](#kendi-paketinizi-derlemek)).
+
 ### Admin aracı (kendi bilgisayarınızda)
 
 Backend artık geliştiricinin kendi bilgisayarında çalıştığı için admin aracı

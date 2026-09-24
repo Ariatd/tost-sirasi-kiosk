@@ -23,32 +23,34 @@ ADMIN_TOKEN = os.environ.get("TOST_ADMIN_TOKEN", "")
 AUTO_REFRESH_MS = 4000
 HTTP_TIMEOUT = 6
 
-# Kiosk App.jsx menüsündeki tüm seçeneklerle birebir aynı
+# Kiosk App.jsx menüsündeki tüm seçeneklerle birebir aynı (öğe adları
+# backend'e gönderilen gerçek veri anahtarları olduğu için ÇEVRİLMEZ;
+# yalnızca kategori başlıkları görüntü metnidir).
 MENU_CATEGORIES = {
-    "🥪 Standart Tostlar": [
+    "🥪 Standard Toasts": [
         'Sucuklu', 'Patatesli', 'Kaşarlı (Sade)', 'Kavurmalı',
         'Ton Balıklı', 'Yumurtalı', 'Karışık', 'Vejetaryen'
     ],
-    "🍞 Ekmek Türleri": [
+    "🍞 Bread Types": [
         'Tam Buğday', 'Kepekli', 'Beyaz Ekmek', 'Susamlı'
     ],
-    "🥩 İç Malzemeler": [
+    "🥩 Fillings": [
         'Sucuk', 'Kavurma', 'Ton Balığı', 'Yumurta',
         'Kızartılmış Patates', 'Salam', 'Sosis'
     ],
-    "🧀 Peynir İlavesi": [
+    "🧀 Cheese Options": [
         'Kaşar Peyniri', 'Cheddar Peyniri', 'Peynir İstemiyorum'
     ],
-    "🥗 Yeşillik & İlaveler": [
+    "🥗 Greens & Extras": [
         'Salatalık', 'Avokado', 'Marul', 'Zeytin', 'Mısır', 'Patates Püresi', 'Brokoli'
     ],
-    "🥫 Sos & Tercih": [
+    "🥫 Sauce & Preference": [
         'Özel Sos', 'Organik İlaveli'
     ]
 }
 
 if not ADMIN_TOKEN:
-    print("HATA: TOST_ADMIN_TOKEN ayarlanmamış.", file=sys.stderr)
+    print("ERROR: TOST_ADMIN_TOKEN is not set.", file=sys.stderr)
     sys.exit(1)
 
 # --------------------------------------------------------------------------
@@ -100,19 +102,19 @@ def fmt_iso(s):
 
 
 def ticket_status(t):
-    """(etiket, tag) — backend'in /api/ticket-status ile aynı 4 durumu ayırt eder."""
+    """(label, tag) — backend'in /api/ticket-status ile aynı 4 durumu ayırt eder."""
     if t.get("cancelled"):
-        return "İptal Edildi", "cancelled"
+        return "Cancelled", "cancelled"
     if t.get("picked_up"):
-        return "Teslim Alındı", "picked_up"
+        return "Picked Up", "picked_up"
     try:
         left = int(t["scheduled_time"]) / 1000 - datetime.now().timestamp()
     except Exception:
         return "?", ""
     if left <= 0:
-        return "HAZIR", "ready"
+        return "READY", "ready"
     mins = int(left // 60) + 1
-    return f"{mins} dk sonra", "active"
+    return f"in {mins} min", "active"
 
 
 class FormDialog(tk.Toplevel):
@@ -162,8 +164,8 @@ class FormDialog(tk.Toplevel):
         btns = tk.Frame(self, bg=BG_SURFACE)
         btns.grid(row=self._row, column=0, columnspan=2, pady=(10, 14))
         self._row += 1
-        ttk.Button(btns, text="Kaydet", style="Amber.TButton", command=self._on_save).pack(side="left", padx=6)
-        ttk.Button(btns, text="Vazgeç", command=self.destroy).pack(side="left", padx=6)
+        ttk.Button(btns, text="Save", style="Amber.TButton", command=self._on_save).pack(side="left", padx=6)
+        ttk.Button(btns, text="Cancel", command=self.destroy).pack(side="left", padx=6)
         if extra:
             text, cmd = extra
             ttk.Button(btns, text=text, command=cmd).pack(side="left", padx=6)
@@ -178,7 +180,7 @@ class FormDialog(tk.Toplevel):
         try:
             self.result = self.collect()
         except ValueError as e:
-            messagebox.showerror("Geçersiz değer", str(e))
+            messagebox.showerror("Invalid value", str(e))
             return
         self.destroy()
 
@@ -191,44 +193,44 @@ class UserEditDialog(FormDialog):
     yenilenme tarihi, engel durumu — hepsi doğrudan düzenlenebilir."""
 
     def __init__(self, parent, user, on_renew_now):
-        super().__init__(parent, "Kullanıcıyı Düzenle")
+        super().__init__(parent, "Edit User")
         card_id = user["card_id"]
         tk.Label(self, text=card_id, bg=BG_SURFACE, fg=TEXT_MUTED, font=("TkDefaultFont", 9)).grid(
             row=self._row, column=0, columnspan=2, sticky="w", padx=16, pady=(10, 0))
         self._row += 1
 
-        self.first_var = self.add_text("Ad:", user.get("first_name", ""))
-        self.last_var = self.add_text("Soyad:", user.get("last_name", ""))
-        self.balance_var = self.add_text("Bakiye (şu an harcanabilir):", user.get("balance", 0))
-        self.quota_var = self.add_text("Aylık Kredi Limiti:", user.get("monthly_quota", 0))
-        self.reset_var = self.add_text("Limit Yenilenme Tarihi (YYYY-AA-GG SS:DD):",
+        self.first_var = self.add_text("First name:", user.get("first_name", ""))
+        self.last_var = self.add_text("Last name:", user.get("last_name", ""))
+        self.balance_var = self.add_text("Balance (currently spendable):", user.get("balance", 0))
+        self.quota_var = self.add_text("Monthly Credit Limit:", user.get("monthly_quota", 0))
+        self.reset_var = self.add_text("Limit Renewal Date (YYYY-MM-DD HH:MM):",
                                         fmt_iso(user.get("quota_reset_date")))
-        self.blocked_var = self.add_check("Engelli (sipariş veremez)", user.get("is_blocked"))
-        self.add_note("Limit yenilenme tarihi geldiğinde bakiye otomatik olarak "
-                       "aylık limite sıfırlanır. \"Limiti Şimdi Yenile\" bunu anında "
-                       "(bakiye=limit, sayaç 30 gün ileri) tetikler.")
+        self.blocked_var = self.add_check("Blocked (cannot place orders)", user.get("is_blocked"))
+        self.add_note("When the renewal date is reached, the balance automatically resets "
+                       "to the monthly limit. \"Renew Limit Now\" triggers this instantly "
+                       "(balance = limit, counter moved 30 days forward).")
 
         def renew_now():
-            if messagebox.askyesno("Limiti Şimdi Yenile",
-                                    f"{card_id} için bakiye limite sıfırlanıp sayaç 30 gün ileri alınsın mı?"):
+            if messagebox.askyesno("Renew Limit Now",
+                                    f"Reset the balance to the limit and move the counter 30 days forward for {card_id}?"):
                 on_renew_now(card_id)
                 self.destroy()
 
-        self.add_buttons(extra=("🔄 Limiti Şimdi Yenile", renew_now))
+        self.add_buttons(extra=("🔄 Renew Limit Now", renew_now))
 
     def collect(self):
         try:
             balance = int(self.balance_var.get())
             quota = int(self.quota_var.get())
         except ValueError:
-            raise ValueError("Bakiye ve kredi limiti tam sayı olmalı.")
+            raise ValueError("Balance and credit limit must be whole numbers.")
         reset_raw = self.reset_var.get().strip()
         reset_iso = None
         if reset_raw:
             try:
                 reset_iso = datetime.strptime(reset_raw, "%Y-%m-%d %H:%M").isoformat(timespec="seconds")
             except ValueError:
-                raise ValueError("Yenilenme tarihi 'YYYY-AA-GG SS:DD' biçiminde olmalı (ör. 2026-10-23 14:00).")
+                raise ValueError("Renewal date must be in 'YYYY-MM-DD HH:MM' format (e.g. 2026-10-23 14:00).")
         return {
             "first_name": self.first_var.get().strip(),
             "last_name": self.last_var.get().strip(),
@@ -244,27 +246,27 @@ class TicketEditDialog(FormDialog):
     puan, teslim/iptal durumu — hepsi doğrudan düzenlenebilir."""
 
     def __init__(self, parent, ticket):
-        super().__init__(parent, f"Bilet #{ticket['code']} — Düzenle")
+        super().__init__(parent, f"Ticket #{ticket['code']} — Edit")
         sched_str = datetime.fromtimestamp(ticket["scheduled_time"] / 1000).strftime("%Y-%m-%d %H:%M")
-        self.code_var = self.add_text("Bilet Kodu:", ticket.get("code", ""))
-        self.sched_var = self.add_text("Hedef Saat (YYYY-AA-GG SS:DD):", sched_str)
-        self.items_var = self.add_text("Sipariş İçeriği:", ticket.get("items_summary", ""))
-        self.points_var = self.add_text("Harcanan Puan:", ticket.get("points_spent", 0))
-        self.picked_var = self.add_check("Teslim Alındı", ticket.get("picked_up"))
-        self.cancelled_var = self.add_check("İptal Edildi", ticket.get("cancelled"))
-        self.add_note("Hedef saati değiştirmek, siparişin hazır sayılacağı ve "
-                       "takvim/QR takip ekranındaki geri sayımın hedeflediği anı değiştirir.")
+        self.code_var = self.add_text("Ticket Code:", ticket.get("code", ""))
+        self.sched_var = self.add_text("Target Time (YYYY-MM-DD HH:MM):", sched_str)
+        self.items_var = self.add_text("Order Contents:", ticket.get("items_summary", ""))
+        self.points_var = self.add_text("Points Spent:", ticket.get("points_spent", 0))
+        self.picked_var = self.add_check("Picked Up", ticket.get("picked_up"))
+        self.cancelled_var = self.add_check("Cancelled", ticket.get("cancelled"))
+        self.add_note("Changing the target time changes the moment the order is considered ready, "
+                       "and the moment the QR tracking screen's countdown targets.")
         self.add_buttons()
 
     def collect(self):
         try:
             points = int(self.points_var.get())
         except ValueError:
-            raise ValueError("Harcanan puan tam sayı olmalı.")
+            raise ValueError("Points spent must be a whole number.")
         try:
             sched_dt = datetime.strptime(self.sched_var.get().strip(), "%Y-%m-%d %H:%M")
         except ValueError:
-            raise ValueError("Hedef saat 'YYYY-AA-GG SS:DD' biçiminde olmalı (ör. 2026-09-23 14:30).")
+            raise ValueError("Target time must be in 'YYYY-MM-DD HH:MM' format (e.g. 2026-09-23 14:30).")
         return {
             "code": self.code_var.get().strip(),
             "scheduled_time": int(sched_dt.timestamp() * 1000),
@@ -282,7 +284,7 @@ class AdminApp:
         self.stock = []
         self._busy = False
 
-        root.title("Tost Sırası — Yönetici Paneli")
+        root.title("Tost Sırası — Admin Panel")
         root.geometry("1280x820")
         root.minsize(980, 600)
         root.configure(bg=BG_DEEP)
@@ -357,7 +359,7 @@ class AdminApp:
         left.pack(side="left")
         tk.Label(left, text="🍞 Tost Sırası", bg=BG_SURFACE, fg=TEXT,
                  font=("TkDefaultFont", 15, "bold")).pack(anchor="w")
-        self.conn_label = tk.Label(left, text="● bağlanıyor…", bg=BG_SURFACE, fg=TEXT_MUTED,
+        self.conn_label = tk.Label(left, text="● connecting…", bg=BG_SURFACE, fg=TEXT_MUTED,
                                     font=("TkDefaultFont", 9))
         self.conn_label.pack(anchor="w")
         self.db_label = tk.Label(left, text="", bg=BG_SURFACE, fg=TEXT_MUTED, font=("TkDefaultFont", 8))
@@ -367,8 +369,8 @@ class AdminApp:
         stats.pack(side="left", padx=(36, 0))
         self.stat_labels = {}
         for key, caption in [
-            ("users", "Kullanıcı"), ("tickets_active", "Aktif Sipariş"),
-            ("tickets", "Toplam Bilet"), ("pending_requests", "Bekleyen Talep"),
+            ("users", "Users"), ("tickets_active", "Active Orders"),
+            ("tickets", "Total Tickets"), ("pending_requests", "Pending Requests"),
         ]:
             cell = tk.Frame(stats, bg=BG_SURFACE, padx=14)
             cell.pack(side="left")
@@ -379,16 +381,16 @@ class AdminApp:
 
         right = tk.Frame(bar, bg=BG_SURFACE)
         right.pack(side="right")
-        ttk.Button(right, text="↻ Yenile", style="Amber.TButton", command=self.refresh).pack(side="right")
+        ttk.Button(right, text="↻ Refresh", style="Amber.TButton", command=self.refresh).pack(side="right")
 
         self.test_panel_var = tk.BooleanVar(value=True)
         ttk.Checkbutton(
-            right, text="Test paneli (kiosk)", variable=self.test_panel_var,
+            right, text="Test panel (kiosk)", variable=self.test_panel_var,
             command=self.toggle_test_panel, style="Header.TCheckbutton"
         ).pack(side="right", padx=(0, 16))
 
     def _build_statusbar(self):
-        self.status_var = tk.StringVar(value="Hazır.")
+        self.status_var = tk.StringVar(value="Ready.")
         sb = tk.Frame(self.root, bg=BG_SURFACE2)
         sb.pack(fill="x", side="bottom")
         self.status_label = tk.Label(sb, textvariable=self.status_var, bg=BG_SURFACE2, fg=TEXT_MUTED,
@@ -415,15 +417,15 @@ class AdminApp:
     # -----------------------------------------------------------------
     def _build_stock_tab(self):
         tab = ttk.Frame(self.nb, padding=14)
-        self.nb.add(tab, text="🥪 Menü & Stok")
+        self.nb.add(tab, text="🥪 Menu & Stock")
 
-        info = tk.Label(tab, text="İşaretlenen ürünler kiosk ekranında kırmızı \"TÜKENDİ\" rozeti alır ve seçilemez.",
+        info = tk.Label(tab, text="Checked items get a red \"OUT OF STOCK\" badge on the kiosk screen and can't be selected.",
                          bg=BG_DEEP, fg=WARNING, font=("TkDefaultFont", 10, "bold"))
         info.pack(anchor="w", pady=(0, 10))
 
         bbar = tk.Frame(tab, bg=BG_DEEP)
         bbar.pack(fill="x", pady=(0, 10))
-        ttk.Button(bbar, text="🔄 Tüm Stokları Aç", command=self.reset_all_stocks).pack(side="left")
+        ttk.Button(bbar, text="🔄 Restock All", command=self.reset_all_stocks).pack(side="left")
 
         self.stock_vars = {}
         grid_container = tk.Frame(tab, bg=BG_DEEP)
@@ -448,9 +450,9 @@ class AdminApp:
         out = [item for item, var in self.stock_vars.items() if var.get()]
         ok, res = api("POST", "/api/admin/stock", body={"out_of_stock": out})
         if ok:
-            self.set_status(f"Stok güncellendi: {len(out)} ürün tükendi.", "ok" if not out else "info")
+            self.set_status(f"Stock updated: {len(out)} item(s) out of stock.", "ok" if not out else "info")
         else:
-            self.set_status(f"Stok güncellenemedi: {res}", "error")
+            self.set_status(f"Stock update failed: {res}", "error")
 
     def reset_all_stocks(self):
         for v in self.stock_vars.values():
@@ -462,45 +464,45 @@ class AdminApp:
         ok, res = api("POST", "/api/admin/test-panel", body={"enabled": enabled})
         if ok:
             self.set_status(
-                f"Kiosk'taki test paneli {'gösteriliyor' if enabled else 'gizlendi'}.", "ok"
+                f"Test panel on the kiosk is now {'shown' if enabled else 'hidden'}.", "ok"
             )
         else:
             self.test_panel_var.set(not enabled)  # basarisizsa eski haline dondur
-            self.set_status(f"Test paneli değiştirilemedi: {res}", "error")
+            self.set_status(f"Could not change test panel: {res}", "error")
 
     # -----------------------------------------------------------------
     # Sekme: Biletler
     # -----------------------------------------------------------------
     def _build_tickets_tab(self):
         frame = ttk.Frame(self.nb, padding=10)
-        self.nb.add(frame, text="🎫 Biletler")
+        self.nb.add(frame, text="🎫 Tickets")
 
         top = tk.Frame(frame, bg=BG_DEEP)
         top.pack(fill="x", pady=(0, 8))
-        tk.Label(top, text="Ara:", bg=BG_DEEP, fg=TEXT_MUTED).pack(side="left")
+        tk.Label(top, text="Search:", bg=BG_DEEP, fg=TEXT_MUTED).pack(side="left")
         self.ticket_filter_var = tk.StringVar()
         self.ticket_filter_var.trace_add("write", lambda *_: self._render_tickets())
         ttk.Entry(top, textvariable=self.ticket_filter_var, width=30).pack(side="left", padx=6)
-        tk.Label(top, text="kod / kart / isim ile filtreler", bg=BG_DEEP, fg=TEXT_MUTED,
+        tk.Label(top, text="filters by code / card / name", bg=BG_DEEP, fg=TEXT_MUTED,
                  font=("TkDefaultFont", 8)).pack(side="left")
 
         actions = tk.Frame(frame, bg=BG_DEEP)
         actions.pack(fill="x", pady=(8, 0), side="bottom")
-        ttk.Button(actions, text="✎ Düzenle", style="Amber.TButton",
+        ttk.Button(actions, text="✎ Edit", style="Amber.TButton",
                    command=self.edit_selected_ticket).pack(side="left", padx=(0, 6))
-        ttk.Button(actions, text="✔ Teslim Et", style="Success.TButton",
+        ttk.Button(actions, text="✔ Mark Picked Up", style="Success.TButton",
                    command=self.pickup_selected_ticket).pack(side="left", padx=6)
-        ttk.Button(actions, text="✕ Siparişi İptal Et (puan iade)",
+        ttk.Button(actions, text="✕ Cancel Order (refund points)",
                    command=self.cancel_selected_ticket).pack(side="left", padx=6)
-        ttk.Button(actions, text="🗑 Kalıcı Sil", style="Danger.TButton",
+        ttk.Button(actions, text="🗑 Delete Permanently", style="Danger.TButton",
                    command=self.delete_selected_ticket).pack(side="left", padx=6)
-        tk.Label(actions, text="(çift tıkla: düzenle)", bg=BG_DEEP, fg=TEXT_MUTED,
+        tk.Label(actions, text="(double-click: edit)", bg=BG_DEEP, fg=TEXT_MUTED,
                  font=("TkDefaultFont", 8)).pack(side="right")
 
         cols = [
-            ("code", "Kod", 60), ("items", "Sipariş", 220), ("name", "Müşteri", 150),
-            ("card", "Kart ID", 170), ("sched", "Hedef Saat", 95), ("points", "Puan", 60),
-            ("status", "Durum", 110),
+            ("code", "Code", 60), ("items", "Order", 220), ("name", "Customer", 150),
+            ("card", "Card ID", 170), ("sched", "Target Time", 95), ("points", "Points", 60),
+            ("status", "Status", 110),
         ]
         self.t_tickets = self._make_table(frame, cols)
         self.t_tickets.bind("<Double-1>", self._on_ticket_double_click)
@@ -514,7 +516,7 @@ class AdminApp:
         users_by_card = {u["card_id"]: u for u in self.data.get("users", [])}
         for t in self.data.get("tickets", []):
             u = users_by_card.get(t.get("card_id"))
-            name = f"{u['first_name']} {u['last_name']}".strip() if u else "(bilinmiyor)"
+            name = f"{u['first_name']} {u['last_name']}".strip() if u else "(unknown)"
             if q and q not in str(t.get("code", "")).lower() and q not in str(t.get("card_id", "")).lower() \
                     and q not in name.lower():
                 continue
@@ -527,7 +529,7 @@ class AdminApp:
     def _selected_ticket_id(self):
         sel = self.t_tickets.selection()
         if not sel:
-            self.set_status("Önce bir bilet seçin.", "error")
+            self.set_status("Select a ticket first.", "error")
             return None
         return int(sel[0][1:])
 
@@ -542,45 +544,45 @@ class AdminApp:
         if not t:
             return
         if t.get("picked_up") or t.get("cancelled"):
-            self.set_status("Bu bilet zaten teslim alınmış ya da iptal edilmiş.", "error")
+            self.set_status("This ticket has already been picked up or cancelled.", "error")
             return
         ok, res = api("POST", "/api/pickup", body={"ticket_id": t["id"]})
         if ok:
-            self.set_status(f"#{t['code']} teslim edildi olarak işaretlendi.", "ok")
+            self.set_status(f"#{t['code']} marked as picked up.", "ok")
             self.refresh()
         else:
-            self.set_status(f"Teslim işlemi başarısız: {res}", "error")
+            self.set_status(f"Pickup failed: {res}", "error")
 
     def cancel_selected_ticket(self):
         t = self._selected_ticket()
         if not t:
             return
         if t.get("cancelled") or t.get("picked_up"):
-            self.set_status("Bu bilet zaten iptal edilmiş ya da teslim alınmış.", "error")
+            self.set_status("This ticket has already been cancelled or picked up.", "error")
             return
-        if not messagebox.askyesno("Siparişi İptal Et",
-                                    f"#{t['code']} siparişi iptal edilsin mi? ({t.get('points_spent', 0)} kredi iade edilecek)"):
+        if not messagebox.askyesno("Cancel Order",
+                                    f"Cancel order #{t['code']}? ({t.get('points_spent', 0)} credit(s) will be refunded)"):
             return
         ok, res = api("POST", "/api/admin/ticket/cancel", body={"ticket_id": t["id"]})
         if ok:
-            self.set_status(f"#{t['code']} iptal edildi, {res.get('refunded_points', 0)} kredi iade edildi.", "ok")
+            self.set_status(f"#{t['code']} cancelled, {res.get('refunded_points', 0)} credit(s) refunded.", "ok")
             self.refresh()
         else:
-            self.set_status(f"İptal başarısız: {res}", "error")
+            self.set_status(f"Cancel failed: {res}", "error")
 
     def delete_selected_ticket(self):
         t = self._selected_ticket()
         if not t:
             return
-        if not messagebox.askyesno("Bileti Kalıcı Sil",
-                                    f"#{t['code']} kaydı VERİTABANINDAN tamamen silinsin mi? Bu işlem geri alınamaz."):
+        if not messagebox.askyesno("Delete Ticket Permanently",
+                                    f"Permanently delete record #{t['code']} FROM THE DATABASE? This cannot be undone."):
             return
         ok, res = api("DELETE", f"/api/tickets/{t['id']}")
         if ok:
-            self.set_status(f"#{t['code']} kalıcı olarak silindi.", "ok")
+            self.set_status(f"#{t['code']} permanently deleted.", "ok")
             self.refresh()
         else:
-            self.set_status(f"Silme başarısız: {res}", "error")
+            self.set_status(f"Delete failed: {res}", "error")
 
     def _on_ticket_double_click(self, _event):
         self.edit_selected_ticket()
@@ -597,38 +599,38 @@ class AdminApp:
         body["ticket_id"] = t["id"]
         ok, res = api("POST", "/api/admin/ticket/update", body=body)
         if ok:
-            self.set_status(f"#{t['code']} güncellendi.", "ok")
+            self.set_status(f"#{t['code']} updated.", "ok")
             self.refresh()
         else:
-            self.set_status(f"Güncelleme başarısız: {res}", "error")
+            self.set_status(f"Update failed: {res}", "error")
 
     # -----------------------------------------------------------------
     # Sekme: Kullanıcılar
     # -----------------------------------------------------------------
     def _build_users_tab(self):
         frame = ttk.Frame(self.nb, padding=10)
-        self.nb.add(frame, text="👥 Kullanıcılar")
+        self.nb.add(frame, text="👥 Users")
 
         top = tk.Frame(frame, bg=BG_DEEP)
         top.pack(fill="x", pady=(0, 8))
-        tk.Label(top, text="Ara:", bg=BG_DEEP, fg=TEXT_MUTED).pack(side="left")
+        tk.Label(top, text="Search:", bg=BG_DEEP, fg=TEXT_MUTED).pack(side="left")
         self.user_filter_var = tk.StringVar()
         self.user_filter_var.trace_add("write", lambda *_: self._render_users())
         ttk.Entry(top, textvariable=self.user_filter_var, width=30).pack(side="left", padx=6)
 
         actions = tk.Frame(frame, bg=BG_DEEP)
         actions.pack(fill="x", pady=(8, 0), side="bottom")
-        ttk.Button(actions, text="✎ Kullanıcıyı Düzenle", style="Amber.TButton",
+        ttk.Button(actions, text="✎ Edit User", style="Amber.TButton",
                    command=self.edit_selected_user_balance).pack(side="left", padx=(0, 6))
-        ttk.Button(actions, text="⛔ Engelle / Kaldır",
+        ttk.Button(actions, text="⛔ Block / Unblock",
                    command=self.toggle_selected_user_block).pack(side="left", padx=6)
-        ttk.Button(actions, text="🗑 Kullanıcıyı Sil", style="Danger.TButton",
+        ttk.Button(actions, text="🗑 Delete User", style="Danger.TButton",
                    command=self.delete_selected_user).pack(side="left", padx=6)
 
         cols = [
-            ("card", "Kart ID", 190), ("name", "Ad Soyad", 170), ("balance", "Bakiye", 75),
-            ("quota", "Aylık Kredi Limiti", 120), ("renew", "Limit Yenilenme", 120),
-            ("status", "Durum", 80), ("created", "Kayıt Tarihi", 120),
+            ("card", "Card ID", 190), ("name", "Full Name", 170), ("balance", "Balance", 75),
+            ("quota", "Monthly Credit Limit", 120), ("renew", "Limit Renewal", 120),
+            ("status", "Status", 80), ("created", "Registered", 120),
         ]
         self.t_users = self._make_table(frame, cols)
         self.t_users.tag_configure("blocked", foreground=DANGER)
@@ -646,13 +648,13 @@ class AdminApp:
             tv.insert("", "end", iid=f"u{u['card_id']}", values=(
                 u["card_id"], name, u.get("balance", 0), u.get("monthly_quota", 0),
                 fmt_iso(u.get("quota_reset_date")) or "—",
-                "Engelli" if blocked else "Aktif", fmt_iso(u.get("created_at")),
+                "Blocked" if blocked else "Active", fmt_iso(u.get("created_at")),
             ), tags=("blocked" if blocked else "ok",))
 
     def _selected_user(self):
         sel = self.t_users.selection()
         if not sel:
-            self.set_status("Önce bir kullanıcı seçin.", "error")
+            self.set_status("Select a user first.", "error")
             return None
         card_id = sel[0][1:]
         return next((u for u in self.data.get("users", []) if u["card_id"] == card_id), None)
@@ -666,10 +668,10 @@ class AdminApp:
         def renew_now(card_id):
             ok, res = api("POST", "/api/admin/user/renew-quota", body={"card_id": card_id})
             if ok:
-                self.set_status(f"{name}: kredi limiti şimdi yenilendi.", "ok")
+                self.set_status(f"{name}: credit limit renewed now.", "ok")
                 self.refresh()
             else:
-                self.set_status(f"Yenileme başarısız: {res}", "error")
+                self.set_status(f"Renewal failed: {res}", "error")
 
         dlg = UserEditDialog(self.root, u, renew_now)
         self.root.wait_window(dlg)
@@ -679,10 +681,10 @@ class AdminApp:
         body["card_id"] = u["card_id"]
         ok, res = api("POST", "/api/admin/user/update", body=body)
         if ok:
-            self.set_status(f"{name}: bilgiler güncellendi.", "ok")
+            self.set_status(f"{name}: information updated.", "ok")
             self.refresh()
         else:
-            self.set_status(f"Güncelleme başarısız: {res}", "error")
+            self.set_status(f"Update failed: {res}", "error")
 
     def toggle_selected_user_block(self):
         u = self._selected_user()
@@ -690,49 +692,49 @@ class AdminApp:
             return
         is_blocked = bool(u.get("is_blocked"))
         name = f"{u.get('first_name', '')} {u.get('last_name', '')}".strip()
-        msg = f"{name} kartının engeli kaldırılsın mı?" if is_blocked else \
-            f"{name} kartı engellensin mi? Kullanıcı sipariş veremeyecek."
-        if not messagebox.askyesno("Engelleme Durumu", msg):
+        msg = f"Unblock {name}'s card?" if is_blocked else \
+            f"Block {name}'s card? The user won't be able to place orders."
+        if not messagebox.askyesno("Block Status", msg):
             return
         ok, res = api("POST", "/api/admin/user/block", body={"card_id": u["card_id"], "is_blocked": not is_blocked})
         if ok:
-            self.set_status(f"{name}: {'engellendi' if not is_blocked else 'engeli kaldırıldı'}.", "ok")
+            self.set_status(f"{name}: {'blocked' if not is_blocked else 'unblocked'}.", "ok")
             self.refresh()
         else:
-            self.set_status(f"İşlem başarısız: {res}", "error")
+            self.set_status(f"Action failed: {res}", "error")
 
     def delete_selected_user(self):
         u = self._selected_user()
         if not u:
             return
         name = f"{u.get('first_name', '')} {u.get('last_name', '')}".strip()
-        if not messagebox.askyesno("Kullanıcıyı Sil",
-                                    f"{name} ({u['card_id']}) kaydı kalıcı olarak silinsin mi?"):
+        if not messagebox.askyesno("Delete User",
+                                    f"Permanently delete {name} ({u['card_id']})?"):
             return
         ok, res = api("DELETE", f"/api/users/{urllib.parse.quote(u['card_id'])}")
         if ok:
-            self.set_status(f"{name} silindi.", "ok")
+            self.set_status(f"{name} deleted.", "ok")
             self.refresh()
         else:
-            self.set_status(f"Silme başarısız: {res}", "error")
+            self.set_status(f"Delete failed: {res}", "error")
 
     # -----------------------------------------------------------------
     # Sekme: Hesap Kapatma Talepleri
     # -----------------------------------------------------------------
     def _build_requests_tab(self):
         frame = ttk.Frame(self.nb, padding=10)
-        self.nb.add(frame, text="📨 Hesap Kapatma Talepleri")
+        self.nb.add(frame, text="📨 Account Deletion Requests")
 
         actions = tk.Frame(frame, bg=BG_DEEP)
         actions.pack(fill="x", pady=(8, 0), side="bottom")
-        ttk.Button(actions, text="✅ Onayla (kullanıcıyı sil)", style="Danger.TButton",
+        ttk.Button(actions, text="✅ Approve (delete user)", style="Danger.TButton",
                    command=lambda: self.resolve_selected_request("approve")).pack(side="left", padx=(0, 6))
-        ttk.Button(actions, text="✖ Reddet", command=lambda: self.resolve_selected_request("reject")).pack(
+        ttk.Button(actions, text="✖ Reject", command=lambda: self.resolve_selected_request("reject")).pack(
             side="left", padx=6)
 
         cols = [
-            ("id", "No", 45), ("card", "Kart ID", 180), ("name", "Kullanıcı", 170),
-            ("created", "Talep Tarihi", 130), ("status", "Durum", 100), ("resolved", "Sonuç Tarihi", 130),
+            ("id", "No.", 45), ("card", "Card ID", 180), ("name", "User", 170),
+            ("created", "Requested", 130), ("status", "Status", 100), ("resolved", "Resolved", 130),
         ]
         self.t_requests = self._make_table(frame, cols)
         self.t_requests.tag_configure("pending", foreground=WARNING)
@@ -743,57 +745,57 @@ class AdminApp:
         tv = self.t_requests
         tv.delete(*tv.get_children())
         for r in self.data.get("account_deletion_requests", []):
-            name = f"{r.get('first_name') or ''} {r.get('last_name') or ''}".strip() or "(kayıt yok)"
+            name = f"{r.get('first_name') or ''} {r.get('last_name') or ''}".strip() or "(no profile)"
             status = r.get("status", "pending")
-            status_tr = {"pending": "Bekliyor", "approved": "Onaylandı", "rejected": "Reddedildi"}.get(status, status)
+            status_en = {"pending": "Pending", "approved": "Approved", "rejected": "Rejected"}.get(status, status)
             tv.insert("", "end", iid=f"r{r['id']}", values=(
                 r["id"], r.get("card_id", ""), name, fmt_iso(r.get("created_at")),
-                status_tr, fmt_iso(r.get("resolved_at")),
+                status_en, fmt_iso(r.get("resolved_at")),
             ), tags=(status,))
 
     def resolve_selected_request(self, action):
         sel = self.t_requests.selection()
         if not sel:
-            self.set_status("Önce bir talep seçin.", "error")
+            self.set_status("Select a request first.", "error")
             return
         rid = int(sel[0][1:])
         req = next((r for r in self.data.get("account_deletion_requests", []) if r["id"] == rid), None)
         if not req:
             return
         if req.get("status", "pending") != "pending":
-            self.set_status("Bu talep zaten sonuçlandırılmış.", "error")
+            self.set_status("This request has already been resolved.", "error")
             return
         name = f"{req.get('first_name') or ''} {req.get('last_name') or ''}".strip() or req.get("card_id", "")
         if action == "approve":
-            msg = f"{name} hesabı SİLİNSİN mi? Bu işlem geri alınamaz."
+            msg = f"DELETE {name}'s account? This cannot be undone."
         else:
-            msg = f"{name} hesabının kapatma talebi reddedilsin mi? Kullanıcı kalır."
-        if not messagebox.askyesno("Talebi Sonuçlandır", msg):
+            msg = f"Reject {name}'s account deletion request? The user will remain."
+        if not messagebox.askyesno("Resolve Request", msg):
             return
         ok, res = api("POST", "/api/admin/account-deletion-request/resolve", body={"id": rid, "action": action})
         if ok:
-            self.set_status(f"Talep #{rid} {'onaylandı' if action == 'approve' else 'reddedildi'}.", "ok")
+            self.set_status(f"Request #{rid} {'approved' if action == 'approve' else 'rejected'}.", "ok")
             self.refresh()
         else:
-            self.set_status(f"İşlem başarısız: {res}", "error")
+            self.set_status(f"Action failed: {res}", "error")
 
     # -----------------------------------------------------------------
     # Sekme: Kart Okuma Geçmişi
     # -----------------------------------------------------------------
     def _build_cardreads_tab(self):
         frame = ttk.Frame(self.nb, padding=10)
-        self.nb.add(frame, text="📇 Kart Okuma Geçmişi")
+        self.nb.add(frame, text="📇 Card Read History")
 
         top = tk.Frame(frame, bg=BG_DEEP)
         top.pack(fill="x", pady=(0, 8))
-        tk.Label(top, text="Ara:", bg=BG_DEEP, fg=TEXT_MUTED).pack(side="left")
+        tk.Label(top, text="Search:", bg=BG_DEEP, fg=TEXT_MUTED).pack(side="left")
         self.cardread_filter_var = tk.StringVar()
         self.cardread_filter_var.trace_add("write", lambda *_: self._render_cardreads())
         ttk.Entry(top, textvariable=self.cardread_filter_var, width=30).pack(side="left", padx=6)
-        tk.Label(top, text="(son 200 okuma, sadece görüntüleme)", bg=BG_DEEP, fg=TEXT_MUTED,
+        tk.Label(top, text="(last 200 reads, view only)", bg=BG_DEEP, fg=TEXT_MUTED,
                  font=("TkDefaultFont", 8)).pack(side="left", padx=8)
 
-        cols = [("ts", "Zaman", 150), ("card", "Kart ID", 190), ("em", "EM4100", 130), ("raw", "Ham Çerçeve", 220)]
+        cols = [("ts", "Time", 150), ("card", "Card ID", 190), ("em", "EM4100", 130), ("raw", "Raw Frame", 220)]
         self.t_cardreads = self._make_table(frame, cols)
 
     def _render_cardreads(self):
@@ -840,7 +842,7 @@ class AdminApp:
         self._busy = False
         if ok1 and isinstance(data, dict):
             self.data = data
-            self.conn_label.configure(text=f"● bağlı — son güncelleme {datetime.now().strftime('%H:%M:%S')}",
+            self.conn_label.configure(text=f"● connected — last update {datetime.now().strftime('%H:%M:%S')}",
                                        fg=SUCCESS)
             counts = data.get("counts", {})
             pending = sum(1 for r in data.get("account_deletion_requests", [])
@@ -853,7 +855,7 @@ class AdminApp:
             dbi = data.get("db_info") or {}
             if dbi.get("path"):
                 size_kb = (dbi.get("size_bytes") or 0) / 1024
-                self.db_label.configure(text=f"📁 {dbi['path']}  ({size_kb:.0f} KB) — canlı veritabanı, bağımsız değil")
+                self.db_label.configure(text=f"📁 {dbi['path']}  ({size_kb:.0f} KB) — live database, not independent")
 
             if "test_panel_enabled" in data:
                 # .set() Checkbutton'ın command'ını TETİKLEMEZ (sadece
@@ -865,7 +867,7 @@ class AdminApp:
             self._render_requests()
             self._render_cardreads()
         else:
-            self.conn_label.configure(text=f"● bağlantı hatası: {data}", fg=DANGER)
+            self.conn_label.configure(text=f"● connection error: {data}", fg=DANGER)
 
         if ok2 and isinstance(stock, dict):
             outs = set(stock.get("out_of_stock", []))
